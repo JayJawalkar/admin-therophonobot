@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "107047291062",
+    "project_id": "therophonobot-d22eb",
+    "storage_bucket": "therophonobot-d22eb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:107047291062:android:c342a798ef516cf126fe17",
+        "android_client_info": {
+          "package_name": "com.example.admin_therophonobot"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "107047291062-4b12367k8rmrb702ss4tfr9u7m5sgrh7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNkn8wDEaeiRReYMBn9OwMfm0hfeGE5pc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "107047291062-4b12367k8rmrb702ss4tfr9u7m5sgrh7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "107047291062-ci0ilqlfklonvfav9j5luhh0ilni8th0.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.therophonobot"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:107047291062:android:78e390eeb00bc0ee26fe17",
+        "android_client_info": {
+          "package_name": "com.example.therophonobot"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "107047291062-l8q9ejclnn5rgi29ap4nbl7ji3msdaus.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.therophonobot",
+            "certificate_hash": "4686c7353ad38dcee6df69f4afb68d4f630a4e6d"
+          }
+        },
+        {
+          "client_id": "107047291062-4b12367k8rmrb702ss4tfr9u7m5sgrh7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNkn8wDEaeiRReYMBn9OwMfm0hfeGE5pc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "107047291062-4b12367k8rmrb702ss4tfr9u7m5sgrh7.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "107047291062-ci0ilqlfklonvfav9j5luhh0ilni8th0.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.therophonobot"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
