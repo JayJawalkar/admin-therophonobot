@@ -1,5 +1,7 @@
-import 'package:admin_therophonobot/features/home/views/add_doctors_screen.dart';
-import 'package:admin_therophonobot/features/home/views/add_game_screen.dart';
+import 'package:admin_therophonobot/features/add_doctors/views/add_doctors_screen.dart';
+import 'package:admin_therophonobot/features/add_games/views/add_game_screen_home.dart';
+import 'package:admin_therophonobot/features/add_games/views/add_game_screen_pathway.dart';
+import 'package:admin_therophonobot/features/add_games/views/add_game_screen_syllables.dart';
 import 'package:admin_therophonobot/features/home/views/all_users_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -99,14 +101,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             );
                           },
                         ),
-                        DashboardCard(title: 'Add Games', onTap: () {
-                          Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>  GameManagementScreen(),
-                              ),
-                            );
-                        }),
                         DashboardCard(title: 'Add Doctors', onTap: () {
                           Navigator.push(
                               context,
@@ -115,7 +109,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             );
                         }),
-                        DashboardCard(title: 'Add Diet Plans', onTap: () {}),
+                        DashboardCard(title: 'Add Game to Home', onTap: () {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>  AddHomeGameScreen(),
+                              ),
+                            );
+                        }),
+                        DashboardCard(title: 'Add Game to Pathway', onTap: () {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>  AddPathwayGameScreen(),
+                              ),
+                            );
+                        }),
+                        DashboardCard(title: 'Add Game to Syllables', onTap: () {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>  AddSyllablesGameScreen(),
+                              ),
+                            );
+                        }),
                       ],
                     ),
                   ),
