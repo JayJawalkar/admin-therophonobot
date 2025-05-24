@@ -8,11 +8,11 @@ class AllUsersPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final query = showOnlyPremium
-        ? FirebaseFirestore.instance
-            .collection('users')
-            .where('isPremium', isEqualTo: true)
-        : FirebaseFirestore.instance.collection('users');
+    Query query = FirebaseFirestore.instance.collection('users');
+    
+    if (showOnlyPremium) {
+      query = query.where('isPremium', isEqualTo: true);
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
@@ -34,7 +34,18 @@ class AllUsersPage extends StatelessWidget {
             return const Center(child: Text('No users found.'));
           }
 
-          final users = snapshot.data!.docs;
+          // Cast documents to Map and filter
+          final users = snapshot.data!.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>? ?? {};
+            if (showOnlyPremium) {
+              return data.containsKey('isPremium') && data['isPremium'] == true;
+            }
+            return true;
+          }).toList();
+
+          if (showOnlyPremium && users.isEmpty) {
+            return const Center(child: Text('No premium users found.'));
+          }
 
           return Padding(
             padding: const EdgeInsets.all(12),
@@ -42,10 +53,12 @@ class AllUsersPage extends StatelessWidget {
               itemCount: users.length,
               itemBuilder: (context, index) {
                 final user = users[index];
-                final name = user['name'] ?? 'No Name';
-                final email = user['email'] ?? 'No Email';
-                final phone = user['phone'] ?? 'No Phone';
-                final isPremium = user['isPremium'] == true;
+                final data = user.data() as Map<String, dynamic>? ?? {};
+                
+                final name = data['name'] ?? 'No Name';
+                final email = data['email'] ?? 'No Email';
+                final phone = data['phone'] ?? 'No Phone';
+                final isPremium = data['isPremium'] == true;
 
                 return Card(
                   elevation: 4,

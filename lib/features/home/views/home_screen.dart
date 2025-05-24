@@ -16,21 +16,81 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int totalUsers = 0;
   int premiumUsers = 0;
+  int totalDocotrs=0;
+  int totalHomeGames=0;
+  int totalPathwayGames=0;
+  int totalSyllablesGame=0;
 
   @override
   void initState() {
     super.initState();
     fetchUserStats();
+    fetchDoctor();
+    fetchHomeGames();
+    fetchPathwayGames();
+    fetchSyllablesGames();
   }
 
-  Future<void> fetchUserStats() async {
+ Future<void> fetchUserStats() async {
+  try {
     final snapshot = await FirebaseFirestore.instance.collection('users').get();
     final allUsers = snapshot.docs.length;
-    final premium = snapshot.docs.where((doc) => doc['isPremium'] == true).length;
+    final premium = snapshot.docs.where((doc) {
+      return doc.data().containsKey('isPremium') && doc['isPremium'] == true;
+    }).length;
+
     setState(() {
       totalUsers = allUsers;
       premiumUsers = premium;
     });
+  } catch (e) {
+    e.toString();
+  }
+}
+
+  Future<void> fetchDoctor() async {
+    try {
+      final snapshot=await FirebaseFirestore.instance.collection('doctors').get();
+      final homeGames=snapshot.docs.length;
+      setState(() {
+        totalDocotrs=homeGames;
+      });
+    } catch (e) {
+      e.toString();
+    }
+  }
+  Future<void> fetchHomeGames() async {
+    try {
+      final snapshot=await FirebaseFirestore.instance.collection('home').get();
+      final homeGames=snapshot.docs.length;
+      setState(() {
+        totalHomeGames=homeGames;
+      });
+    } catch (e) {
+      e.toString();
+    }
+  }
+  Future<void> fetchPathwayGames() async {
+    try {
+      final snapshot=await FirebaseFirestore.instance.collection('pathway').get();
+      final paytwayGames=snapshot.docs.length;
+      setState(() {
+        totalPathwayGames=paytwayGames;
+      });
+    } catch (e) {
+      e.toString();
+    }
+  }
+   Future<void> fetchSyllablesGames() async {
+    try {
+      final snapshot=await FirebaseFirestore.instance.collection('syllables').get();
+      final syllablesGames=snapshot.docs.length;
+      setState(() {
+        totalSyllablesGame=syllablesGames;
+      });
+    } catch (e) {
+      e.toString();
+    }
   }
 
   @override
@@ -101,7 +161,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             );
                           },
                         ),
-                        DashboardCard(title: 'Add Doctors', onTap: () {
+                        DashboardCard(title: 'Add Doctors',
+                          value: totalDocotrs.toString(),
+                         onTap: () {
                           Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -109,7 +171,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             );
                         }),
-                        DashboardCard(title: 'Add Game to Home', onTap: () {
+                        DashboardCard(title: 'Add Game to Home',
+                          value: totalHomeGames.toString(),
+                      
+                         onTap: () {
                           Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -117,7 +182,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             );
                         }),
-                        DashboardCard(title: 'Add Game to Pathway', onTap: () {
+                        DashboardCard(title: 'Add Game to Pathway', 
+                          value: totalPathwayGames.toString(),
+                        onTap: () {
                           Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -125,7 +192,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             );
                         }),
-                        DashboardCard(title: 'Add Game to Syllables', onTap: () {
+                        DashboardCard(title: 'Add Game to Syllables',
+                          value: totalSyllablesGame.toString(),
+                        
+                         onTap: () {
                           Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -183,7 +253,7 @@ class DashboardCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
         ),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
