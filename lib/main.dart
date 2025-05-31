@@ -1,5 +1,4 @@
 import 'package:admin_therophonobot/features/authentication/views/authentication_screen.dart';
-import 'package:admin_therophonobot/features/home/views/home_screen.dart';
 import 'package:admin_therophonobot/firebase_options.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -24,7 +23,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home:  DashboardScreen(),
+      home:  AuthenticationScreen(),
     );
   }
 }

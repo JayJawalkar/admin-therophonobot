@@ -1,7 +1,9 @@
+import 'package:admin_therophonobot/features/add_banner_images/views/add_banners_images.dart';
 import 'package:admin_therophonobot/features/add_doctors/views/add_doctors_screen.dart';
 import 'package:admin_therophonobot/features/add_games/views/add_game_screen_home.dart';
 import 'package:admin_therophonobot/features/add_games/views/add_game_screen_pathway.dart';
 import 'package:admin_therophonobot/features/add_games/views/add_game_screen_syllables.dart';
+import 'package:admin_therophonobot/features/add_plans/views/add_plans_screen.dart';
 import 'package:admin_therophonobot/features/home/views/all_users_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,10 +18,10 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int totalUsers = 0;
   int premiumUsers = 0;
-  int totalDocotrs=0;
-  int totalHomeGames=0;
-  int totalPathwayGames=0;
-  int totalSyllablesGame=0;
+  int totalDocotrs = 0;
+  int totalHomeGames = 0;
+  int totalPathwayGames = 0;
+  int totalSyllablesGame = 0;
 
   @override
   void initState() {
@@ -31,62 +33,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
     fetchSyllablesGames();
   }
 
- Future<void> fetchUserStats() async {
-  try {
-    final snapshot = await FirebaseFirestore.instance.collection('users').get();
-    final allUsers = snapshot.docs.length;
-    final premium = snapshot.docs.where((doc) {
-      return doc.data().containsKey('isPremium') && doc['isPremium'] == true;
-    }).length;
+  Future<void> fetchUserStats() async {
+    try {
+      final snapshot =
+          await FirebaseFirestore.instance.collection('users').get();
+      final allUsers = snapshot.docs.length;
+      final premium =
+          snapshot.docs.where((doc) {
+            return doc.data().containsKey('isPremium') &&
+                doc['isPremium'] == true;
+          }).length;
 
-    setState(() {
-      totalUsers = allUsers;
-      premiumUsers = premium;
-    });
-  } catch (e) {
-    e.toString();
+      setState(() {
+        totalUsers = allUsers;
+        premiumUsers = premium;
+      });
+    } catch (e) {
+      e.toString();
+    }
   }
-}
 
   Future<void> fetchDoctor() async {
     try {
-      final snapshot=await FirebaseFirestore.instance.collection('doctors').get();
-      final homeGames=snapshot.docs.length;
+      final snapshot =
+          await FirebaseFirestore.instance.collection('doctors').get();
+      final homeGames = snapshot.docs.length;
       setState(() {
-        totalDocotrs=homeGames;
+        totalDocotrs = homeGames;
       });
     } catch (e) {
       e.toString();
     }
   }
+
   Future<void> fetchHomeGames() async {
     try {
-      final snapshot=await FirebaseFirestore.instance.collection('home').get();
-      final homeGames=snapshot.docs.length;
+      final snapshot =
+          await FirebaseFirestore.instance.collection('home').get();
+      final homeGames = snapshot.docs.length;
       setState(() {
-        totalHomeGames=homeGames;
+        totalHomeGames = homeGames;
       });
     } catch (e) {
       e.toString();
     }
   }
+
   Future<void> fetchPathwayGames() async {
     try {
-      final snapshot=await FirebaseFirestore.instance.collection('pathway').get();
-      final paytwayGames=snapshot.docs.length;
+      final snapshot =
+          await FirebaseFirestore.instance.collection('pathway').get();
+      final paytwayGames = snapshot.docs.length;
       setState(() {
-        totalPathwayGames=paytwayGames;
+        totalPathwayGames = paytwayGames;
       });
     } catch (e) {
       e.toString();
     }
   }
-   Future<void> fetchSyllablesGames() async {
+
+  Future<void> fetchSyllablesGames() async {
     try {
-      final snapshot=await FirebaseFirestore.instance.collection('syllables').get();
-      final syllablesGames=snapshot.docs.length;
+      final snapshot =
+          await FirebaseFirestore.instance.collection('syllables').get();
+      final syllablesGames = snapshot.docs.length;
       setState(() {
-        totalSyllablesGame=syllablesGames;
+        totalSyllablesGame = syllablesGames;
       });
     } catch (e) {
       e.toString();
@@ -97,7 +109,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
-    final crossAxisCount = screenWidth > 1000 ? 3 : screenWidth > 600 ? 2 : 1;
+    final crossAxisCount =
+        screenWidth > 1000
+            ? 3
+            : screenWidth > 600
+            ? 2
+            : 1;
 
     return Scaffold(
       drawer: isMobile ? const Drawer(child: SidebarContent()) : null,
@@ -125,12 +142,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       children: [
                         if (isMobile)
                           Builder(
-                            builder: (context) => IconButton(
-                              icon: const Icon(Icons.menu),
-                              onPressed: () => Scaffold.of(context).openDrawer(),
-                            ),
+                            builder:
+                                (context) => IconButton(
+                                  icon: const Icon(Icons.menu),
+                                  onPressed:
+                                      () => Scaffold.of(context).openDrawer(),
+                                ),
                           ),
-                        const Text('Welcome Admin', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Welcome Admin',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         const Spacer(),
                       ],
                     ),
@@ -146,7 +171,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           title: 'Total Users',
                           value: totalUsers.toString(),
                           onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => const AllUsersPage()));
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const AllUsersPage(),
+                              ),
+                            );
                           },
                         ),
                         DashboardCard(
@@ -156,53 +186,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const AllUsersPage(showOnlyPremium: true),
+                                builder:
+                                    (_) => const AllUsersPage(
+                                      showOnlyPremium: true,
+                                    ),
                               ),
                             );
                           },
                         ),
-                        DashboardCard(title: 'Add Doctors',
+                        DashboardCard(
+                          title: 'Add Doctors',
                           value: totalDocotrs.toString(),
-                         onTap: () {
-                          Navigator.push(
+                          onTap: () {
+                            Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>  AddDoctorScreen(),
+                                builder: (_) => AddDoctorScreen(),
                               ),
                             );
-                        }),
-                        DashboardCard(title: 'Add Game to Home',
+                          },
+                        ),
+                        DashboardCard(
+                          title: 'Add Game to Home',
                           value: totalHomeGames.toString(),
-                      
-                         onTap: () {
-                          Navigator.push(
+
+                          onTap: () {
+                            Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>  AddHomeGameScreen(),
+                                builder: (_) => AddHomeGameScreen(),
                               ),
                             );
-                        }),
-                        DashboardCard(title: 'Add Game to Pathway', 
+                          },
+                        ),
+                        DashboardCard(
+                          title: 'Add Game to Pathway',
                           value: totalPathwayGames.toString(),
-                        onTap: () {
-                          Navigator.push(
+                          onTap: () {
+                            Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>  AddPathwayGameScreen(),
+                                builder: (_) => AddPathwayGameScreen(),
                               ),
                             );
-                        }),
-                        DashboardCard(title: 'Add Game to Syllables',
+                          },
+                        ),
+                        DashboardCard(
+                          title: 'Add Game to Syllables',
                           value: totalSyllablesGame.toString(),
-                        
-                         onTap: () {
-                          Navigator.push(
+
+                          onTap: () {
+                            Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>  AddSyllablesGameScreen(),
+                                builder: (_) => AddSyllablesGameScreen(),
                               ),
                             );
-                        }),
+                          },
+                        ),
+                        DashboardCard(
+                          title: 'Add Plans',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AddPlansScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        DashboardCard(
+                          title: 'Add Banner Images',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AddBannersImages(),
+                              ),
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -224,7 +287,10 @@ class SidebarContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: const [
-        Text('THEROPHONOBOT', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        Text(
+          'THEROPHONOBOT',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        ),
         SizedBox(height: 30),
       ],
     );
@@ -257,7 +323,11 @@ class DashboardCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             if (value != null)
               Padding(
                 padding: const EdgeInsets.only(top: 12),

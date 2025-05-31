@@ -311,9 +311,24 @@ class _AddSyllablesGameScreenState extends State<AddSyllablesGameScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          SmallImageUpload(
-                            file: _currentItemImage,
-                            onPressed: _pickImage,
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SmallImageUpload(
+                                file: _currentItemImage,
+                                onPressed: _pickImage,
+                              ),
+                              if (_currentItemImage == null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4.0),
+                                  child: Text(
+                                    'Tap to add image',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurface.withOpacity(0.6),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                           const SizedBox(width: 8),
                           IconButton(

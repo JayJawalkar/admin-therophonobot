@@ -27,8 +27,6 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
   final List<Map<String, dynamic>> _gameItems = [];
   String? _errorMessage;
 
-  String? _selectedCategory; // Added for category selection
-
   @override
   void dispose() {
     _gameNameController.dispose();
@@ -102,13 +100,6 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
     return;
   }
 
-  if (_selectedCategory == null) {
-    setState(() {
-      _errorMessage = 'Please select a category';
-    });
-    return;
-  }
-
   setState(() {
     _isLoading = true;
     _errorMessage = null;
@@ -153,7 +144,7 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Game saved successfully in $_selectedCategory!'),
+        content: Text('Game saved successfully in Home'),
         backgroundColor: Theme.of(context).primaryColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
@@ -194,7 +185,6 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
       _gameBanner = null;
       _currentItemImage = null;
       _gameItems.clear();
-      _selectedCategory = null;
     });
   }
 
@@ -216,7 +206,7 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
         centerTitle: true,
         elevation: 0,
         actions: [
-          if (_gameItems.isNotEmpty || _gameBanner != null || _gameNameController.text.isNotEmpty || _selectedCategory != null)
+          if (_gameItems.isNotEmpty || _gameBanner != null || _gameNameController.text.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete_outline),
               onPressed: () {
