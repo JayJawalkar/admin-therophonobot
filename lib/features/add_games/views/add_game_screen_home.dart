@@ -9,23 +9,50 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AddHomeGameScreen extends StatefulWidget {
-  const AddHomeGameScreen({super.key});
+  final DocumentSnapshot? gameData; // Existing game data
+  final String? documentId; // Document ID for editing
+
+  const AddHomeGameScreen({super.key, this.gameData, this.documentId});
 
   @override
   State<AddHomeGameScreen> createState() => _AddHomeGameScreenState();
 }
 
 class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final TextEditingController _gameNameController = TextEditingController();
-  final TextEditingController _itemNameController = TextEditingController();
-
+  late final GlobalKey<FormState> _formKey;
+  late final TextEditingController _gameNameController;
+  late final TextEditingController _itemNameController;
   bool _isLoading = false;
   PlatformFile? _gameBanner;
   PlatformFile? _currentItemImage;
-
   final List<Map<String, dynamic>> _gameItems = [];
   String? _errorMessage;
+  String? _existingBannerUrl;
+  // ignore: unused_field
+  String? _generatedId;
+
+  @override
+  void initState() {
+    super.initState();
+    _formKey = GlobalKey<FormState>();
+    _gameNameController = TextEditingController();
+    _itemNameController = TextEditingController();
+
+    if (widget.gameData != null) {
+      final data = widget.gameData!.data() as Map<String, dynamic>;
+      _gameNameController.text = data['name'];
+      _existingBannerUrl = data['bannerUrl'];
+      final List<dynamic> items = data['items'] ?? [];
+      _gameItems.clear();
+      for (var item in items) {
+        _gameItems.add({
+          'name': item['name'],
+          'imageUrl': item['image'], // Store existing URLs
+        });
+      }
+      _generatedId = widget.documentId;
+    }
+  }
 
   @override
   void dispose() {
@@ -41,11 +68,11 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
         allowMultiple: false,
         withData: true,
       );
-
       if (result != null && result.files.isNotEmpty) {
         setState(() {
           if (isBanner) {
             _gameBanner = result.files.first;
+            _existingBannerUrl = null; // Clear existing URL if new image selected
           } else {
             _currentItemImage = result.files.first;
           }
@@ -60,17 +87,17 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
   }
 
   void _addGameItem() {
-    if (_itemNameController.text.isEmpty || _currentItemImage == null) {
+    if (_itemNameController.text.isEmpty || (_currentItemImage == null && _currentItemImage == null)) {
       setState(() {
         _errorMessage = 'Please provide both item name and image';
       });
       return;
     }
-
     setState(() {
       _gameItems.add({
         'name': _itemNameController.text.trim(),
         'file': _currentItemImage,
+        'imageUrl': _currentItemImage == null ? null : _existingBannerUrl, // Retain existing URL if no new file
       });
       _itemNameController.clear();
       _currentItemImage = null;
@@ -79,98 +106,92 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
   }
 
   Future<void> _saveGame() async {
-  if (!_formKey.currentState!.validate()) {
-    setState(() {
-      _errorMessage = 'Please provide a game name';
-    });
-    return;
-  }
-
-  if (_gameBanner == null) {
-    setState(() {
-      _errorMessage = 'Please select a game banner';
-    });
-    return;
-  }
-
-  if (_gameItems.isEmpty) {
-    setState(() {
-      _errorMessage = 'Please add at least one game item';
-    });
-    return;
-  }
-
-  setState(() {
-    _isLoading = true;
-    _errorMessage = null;
-  });
-
-  try {
-    // Upload banner
-    final bannerUrl = await _uploadFile(
-      _gameBanner!,
-      'game_banners/${DateTime.now().millisecondsSinceEpoch}_${_gameBanner!.name}',
-    );
-
-    // Upload all item images
-    final List<Map<String, String>> itemsWithUrls = [];
-    for (final item in _gameItems) {
-      final PlatformFile file = item['file'];
-      final imageRef = 'game_items/${DateTime.now().millisecondsSinceEpoch}_${file.name}';
-      final imageUrl = await _uploadFile(file, imageRef);
-
-      itemsWithUrls.add({
-        'name': item['name'],
-        'image': imageUrl,
+    if (!_formKey.currentState!.validate()) {
+      setState(() {
+        _errorMessage = 'Please provide a game name';
       });
+      return;
     }
-
-    // Get the game name and sanitize it for use as a document ID
-    final gameName = _gameNameController.text.trim();
-    final documentId = gameName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
-
-    // Save to Firestore using game name as document ID
-    await FirebaseFirestore.instance
-        .collection('home')
-        .doc(documentId)  // Use game name as document ID
-        .set({
-          'name': gameName,
-          'bannerUrl': bannerUrl,
-          'items': itemsWithUrls,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true)); 
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Game saved successfully in Home'),
-        backgroundColor: Theme.of(context).primaryColor,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
-    _resetForm();
-  } catch (e) {
+    if (_gameBanner == null && _existingBannerUrl == null) {
+      setState(() {
+        _errorMessage = 'Please select a game banner';
+      });
+      return;
+    }
+    if (_gameItems.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please add at least one game item';
+      });
+      return;
+    }
     setState(() {
-      _errorMessage = 'Failed to save game: ${e.toString()}';
+      _isLoading = true;
+      _errorMessage = null;
     });
-  } finally {
-    if (mounted) {
-      setState(() => _isLoading = false);
+
+    try {
+      String bannerUrl = _existingBannerUrl ?? await _uploadFile(
+        _gameBanner!,
+        'game_banners/${DateTime.now().millisecondsSinceEpoch}_${_gameBanner!.name}',
+      );
+
+      final List<Map<String, String>> itemsWithUrls = [];
+      for (final item in _gameItems) {
+        if (item['file'] != null) {
+          final PlatformFile file = item['file'];
+          final imageRef = 'game_items/${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+          final imageUrl = await _uploadFile(file, imageRef);
+          itemsWithUrls.add({
+            'name': item['name'],
+            'image': imageUrl,
+          });
+        } else {
+          itemsWithUrls.add({
+            'name': item['name'],
+            'image': item['imageUrl'], // Keep existing URL
+          });
+        }
+      }
+
+      final gameName = _gameNameController.text.trim();
+      final documentIdToUse = widget.documentId ?? gameName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+
+      await FirebaseFirestore.instance
+          .collection('home')
+          .doc(documentIdToUse)
+          .set({
+            'name': gameName,
+            'bannerUrl': bannerUrl,
+            'items': itemsWithUrls,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(widget.documentId != null ? 'Game updated' : 'Game created'),
+          backgroundColor: Theme.of(context).primaryColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+      _resetForm();
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to save game: ${e.toString()}';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
-}
-  
+
   Future<String> _uploadFile(PlatformFile file, String path) async {
     try {
       final ref = FirebaseStorage.instance.ref().child(path);
-      if (file.bytes == null) {
-        throw Exception('File bytes are null');
-      }
+      if (file.bytes == null) throw Exception('File bytes are null');
       await ref.putData(file.bytes!);
       return await ref.getDownloadURL();
     } catch (e) {
@@ -185,6 +206,8 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
       _gameBanner = null;
       _currentItemImage = null;
       _gameItems.clear();
+      _existingBannerUrl = null;
+      _generatedId = null;
     });
   }
 
@@ -202,7 +225,7 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create New Game in Home'),
+        title: Text(widget.documentId != null ? 'Edit Game' : 'Create New Game'),
         centerTitle: true,
         elevation: 0,
         actions: [
@@ -216,10 +239,7 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
                     title: const Text('Reset Form'),
                     content: const Text('Are you sure you want to clear all inputs?'),
                     actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
+                      TextButton(onPressed: Navigator.of(context).pop, child: const Text('Cancel')),
                       TextButton(
                         onPressed: () {
                           Navigator.pop(context);
@@ -236,10 +256,7 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(
-          horizontal: isSmallScreen ? 16 : 24,
-          vertical: 16,
-        ),
+        padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 16 : 24, vertical: 16),
         child: Form(
           key: _formKey,
           child: Column(
@@ -256,30 +273,26 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
                       labelText: 'Game Name',
                       hintText: 'Enter the game title',
                       prefixIcon: const Icon(Icons.short_text),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       filled: true,
                       fillColor: colorScheme.surfaceVariant.withOpacity(0.2),
                     ),
                     validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
                   ),
-                  const SizedBox(height: 20),                  
+                  const SizedBox(height: 20),
                   Text(
                     'Game Banner',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 8),
                   ImageUploadCard(
                     file: _gameBanner,
+                    imageUrl: _existingBannerUrl,
                     onPressed: () => _pickImage(true),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
-
               // Game Items Section
               SectionCard(
                 title: 'Game Items',
@@ -312,8 +325,7 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
                           ),
                           const SizedBox(width: 8),
                           IconButton(
-                            icon: Icon(Icons.add_circle,
-                                size: 32, color: colorScheme.primary),
+                            icon: Icon(Icons.add_circle, size: 32, color: colorScheme.primary),
                             onPressed: _addGameItem,
                             tooltip: 'Add Item',
                           ),
@@ -373,10 +385,12 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
                           itemCount: _gameItems.length,
                           itemBuilder: (context, index) {
                             final item = _gameItems[index];
-                            final PlatformFile file = item['file'];
+                            final PlatformFile? file = item['file'];
+                            final String? imageUrl = item['imageUrl'];
                             return GameItemCard(
                               name: item['name'],
-                              imageBytes: file.bytes,
+                              imageBytes: file?.bytes,
+                              imageUrl: imageUrl,
                               onDelete: () => _removeItem(index),
                               onEdit: () {
                                 _itemNameController.text = item['name'];
@@ -393,7 +407,6 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
                 ],
               ),
               const SizedBox(height: 24),
-
               // Error Message
               if (_errorMessage != null)
                 ErrorCard(
@@ -401,7 +414,6 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
                   onDismiss: () => setState(() => _errorMessage = null),
                 ),
               if (_errorMessage != null) const SizedBox(height: 16),
-
               // Save Button
               Padding(
                 padding: EdgeInsets.symmetric(
@@ -420,9 +432,7 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
                       ? const SizedBox(
                           width: 24,
                           height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                          ),
+                          child: CircularProgressIndicator(strokeWidth: 3),
                         )
                       : Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -431,7 +441,7 @@ class _AddHomeGameScreenState extends State<AddHomeGameScreen> {
                                 color: colorScheme.onPrimaryContainer),
                             const SizedBox(width: 12),
                             Text(
-                              'Save Game',
+                              widget.documentId != null ? 'Update Game' : 'Save Game',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: colorScheme.onPrimaryContainer,

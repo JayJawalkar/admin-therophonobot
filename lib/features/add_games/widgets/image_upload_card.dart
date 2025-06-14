@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 
 class ImageUploadCard extends StatelessWidget {
   final PlatformFile? file;
+  final String? imageUrl; // New parameter for existing URLs
   final VoidCallback onPressed;
 
-  const ImageUploadCard({super.key, 
-    required this.file,
+  const ImageUploadCard({
+    super.key,
     required this.onPressed,
+    this.file,
+    this.imageUrl,
   });
 
   @override
@@ -16,7 +19,7 @@ class ImageUploadCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return AspectRatio(
-      aspectRatio: 5/1,
+      aspectRatio: 16 / 9, // Changed to recommended 16:9 ratio
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: onPressed,
@@ -29,16 +32,38 @@ class ImageUploadCard extends StatelessWidget {
               width: 2,
             ),
           ),
-          child: file != null
+          child: (file != null || imageUrl != null)
               ? ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      Image.memory(
-                        file!.bytes!,
-                        fit: BoxFit.cover,
-                      ),
+                      // Display either file or existing URL
+                      if (file != null)
+                        Image.memory(
+                          file!.bytes!,
+                          fit: BoxFit.cover,
+                        )
+                      else if (imageUrl != null)
+                        Image.network(
+                          imageUrl!,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(Icons.error, color: colorScheme.error);
+                          },
+                        ),
+                      // Edit button overlay
                       Positioned(
                         bottom: 12,
                         right: 12,

@@ -1,10 +1,14 @@
 import 'package:admin_therophonobot/features/add_banner_images/views/add_banners_images.dart';
+import 'package:admin_therophonobot/features/add_category/views/add_categories.dart';
+import 'package:admin_therophonobot/features/add_category/widgets/game_form.dart';
 import 'package:admin_therophonobot/features/add_doctors/views/add_doctors_screen.dart';
 import 'package:admin_therophonobot/features/add_games/views/add_game_screen_home.dart';
 import 'package:admin_therophonobot/features/add_games/views/add_game_screen_pathway.dart';
 import 'package:admin_therophonobot/features/add_games/views/add_game_screen_syllables.dart';
 import 'package:admin_therophonobot/features/add_plans/views/add_plans_screen.dart';
+import 'package:admin_therophonobot/features/api_keys/views/api_key_screen.dart';
 import 'package:admin_therophonobot/features/home/views/all_users_screen.dart';
+import 'package:admin_therophonobot/features/view_games/views/home_list_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -262,6 +266,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => AddBannersImages(),
+                              ),
+                            );
+                          },
+                        ),DashboardCard(
+                          title: 'View Home Games',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => HomeGamesListScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        DashboardCard(
+                          title: 'View Apis',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ApiKeyScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        DashboardCard(
+                          title: 'Add Categories',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AddCategoryScreen(),
+                              ),
+                            );
+                          },
+                        ),DashboardCard(
+                          title: 'Edit Categories',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CategoriesOverviewScreen(),
                               ),
                             );
                           },
