@@ -1,27 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class AllUsersPage extends StatelessWidget {
   final bool showOnlyPremium;
+  final bool expiringSoonOnly;
 
-  const AllUsersPage({super.key, this.showOnlyPremium = false});
+  const AllUsersPage({
+    super.key,
+    this.showOnlyPremium = false,
+    this.expiringSoonOnly = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    Query query = FirebaseFirestore.instance.collection('users');
-    
-    if (showOnlyPremium) {
-      query = query.where('isPremium', isEqualTo: true);
-    }
+    final Size size=MediaQuery.of(context).size;
+    final Query query = showOnlyPremium
+        ? FirebaseFirestore.instance
+            .collection('users')
+            .where('isPremium', isEqualTo: true)
+        : FirebaseFirestore.instance.collection('users');
+
+    final now = DateTime.now();
+    final cutoff = now.add(const Duration(days: 7));
+
+    final horizontalScroll = ScrollController();
+    final verticalScroll = ScrollController();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
+      backgroundColor: const Color(0xFFF1F3F6),
       appBar: AppBar(
-        title: Text(showOnlyPremium ? '👑 Premium Users' : '👥 All Users'),
+        title: Text(
+          showOnlyPremium
+              ? (expiringSoonOnly ? '⏳ Expiring Premium Users' : '👑 Premium Users')
+              : '👥 All Users',
+        ),
         backgroundColor: Colors.deepPurpleAccent,
         foregroundColor: Colors.white,
         centerTitle: true,
-        elevation: 0,
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: query.snapshots(),
@@ -34,88 +50,159 @@ class AllUsersPage extends StatelessWidget {
             return const Center(child: Text('No users found.'));
           }
 
-          // Cast documents to Map and filter
           final users = snapshot.data!.docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>? ?? {};
-            if (showOnlyPremium) {
-              return data.containsKey('isPremium') && data['isPremium'] == true;
+            final isPremium = data['isPremium'] == true;
+
+            if (showOnlyPremium && !isPremium) return false;
+
+            if (expiringSoonOnly) {
+              final ts = data['premiumExpiresAt'];
+              if (ts is Timestamp) {
+                final expiryDate = ts.toDate();
+                return expiryDate.isAfter(now) && expiryDate.isBefore(cutoff);
+              }
+              return false;
             }
+
             return true;
           }).toList();
 
-          if (showOnlyPremium && users.isEmpty) {
-            return const Center(child: Text('No premium users found.'));
+          if (users.isEmpty) {
+            return Center(
+              child: Text(
+                showOnlyPremium
+                    ? (expiringSoonOnly
+                        ? 'No premium users expiring soon.'
+                        : 'No premium users found.')
+                    : 'No users found.',
+                style: const TextStyle(fontSize: 16),
+              ),
+            );
           }
 
-          return Padding(
-            padding: const EdgeInsets.all(12),
-            child: ListView.builder(
-              itemCount: users.length,
-              itemBuilder: (context, index) {
-                final user = users[index];
-                final data = user.data() as Map<String, dynamic>? ?? {};
-                
-                final name = data['name'] ?? 'No Name';
-                final email = data['email'] ?? 'No Email';
-                final phone = data['phone'] ?? 'No Phone';
-                final isPremium = data['isPremium'] == true;
-
-                return Card(
-                  elevation: 4,
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    leading: CircleAvatar(
-                      radius: 28,
-                      backgroundColor: isPremium ? Colors.amber.shade700 : Colors.grey.shade300,
-                      child: Icon(
-                        isPremium ? Icons.workspace_premium : Icons.person,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                    ),
-                    title: Text(
-                      name,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Icon(Icons.email, size: 16, color: Colors.grey),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                email,
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ),
-                          ],
+          return Scrollbar(
+            controller: verticalScroll,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: verticalScroll,
+              padding: const EdgeInsets.all(24),
+              child: Scrollbar(
+                controller: horizontalScroll,
+                thumbVisibility: true,
+                notificationPredicate: (_) => true,
+                child: SingleChildScrollView(
+                  controller: horizontalScroll,
+                  scrollDirection: Axis.horizontal,
+                  child: ConstrainedBox(
+                    constraints:  BoxConstraints(minWidth: size.width-100),
+                    child: DataTable(
+                      columnSpacing: 40,
+                      headingRowColor:
+                          MaterialStateProperty.all(Colors.grey[200]),
+                      border: TableBorder.all(color: Colors.grey.shade300),
+                      columns: const [
+                        DataColumn(
+                          label: Text('Name',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(Icons.phone, size: 16, color: Colors.grey),
-                            const SizedBox(width: 6),
-                            Text(
-                              phone,
-                              style: const TextStyle(fontSize: 14),
-                            ),
-                          ],
+                        DataColumn(
+                          label: Text('Email',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        DataColumn(
+                          label: Text('Phone',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        DataColumn(
+                          label: Text('Premium',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        DataColumn(
+                          label: Text('Expires At',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        DataColumn(
+                          label: Text('Status',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ],
+                      rows: users.map((user) {
+                        final data = user.data() as Map<String, dynamic>? ?? {};
+                        final name = data['name'] ?? 'No Name';
+                        final email = data['email'] ?? 'No Email';
+                        final phone = data['phone'] ?? 'No Phone';
+                        final isPremium = data['isPremium'] == true;
+
+                        String expiryStr = '—';
+                        bool isExpiringSoon = false;
+
+                        if (isPremium &&
+                            data['premiumExpiresAt'] is Timestamp) {
+                          final expiryDate =
+                              (data['premiumExpiresAt'] as Timestamp).toDate();
+                          expiryStr =
+                              DateFormat('dd MMM yyyy, hh:mm a').format(expiryDate);
+                          isExpiringSoon = expiryDate.isAfter(now) &&
+                              expiryDate.isBefore(cutoff);
+                        }
+
+                        return DataRow(cells: [
+                          DataCell(Text(name)),
+                          DataCell(Text(email)),
+                          DataCell(Text(phone)),
+                          DataCell(
+                            isPremium
+                                ? const Icon(Icons.verified, color: Colors.green)
+                                : const Icon(Icons.close, color: Colors.red),
+                          ),
+                          DataCell(Text(expiryStr)),
+                          DataCell(
+                            isPremium
+                                ? isExpiringSoon
+                                    ? Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color:
+                                              Colors.redAccent.withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: const Text(
+                                          'Expiring Soon',
+                                          style: TextStyle(
+                                            color: Colors.redAccent,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      )
+                                    : Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: const Text(
+                                          'Active',
+                                          style: TextStyle(
+                                            color: Colors.green,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      )
+                                : const Text('—'),
+                          ),
+                        ]);
+                      }).toList(),
                     ),
-                    trailing: isPremium
-                        ? const Icon(Icons.diamond_rounded, color: Colors.amber, size: 32)
-                        : null,
                   ),
-                );
-              },
+                ),
+              ),
             ),
           );
         },

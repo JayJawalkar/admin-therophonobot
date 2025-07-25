@@ -371,6 +371,8 @@ class SidebarContent extends StatelessWidget {
           },
           child: Text('Approve therapist'),
         ),
+        SizedBox(height: 20),
+        
       ],
     );
   }

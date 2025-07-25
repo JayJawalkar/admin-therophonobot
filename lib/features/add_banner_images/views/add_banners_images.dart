@@ -40,12 +40,10 @@ class _AddBannersImagesState extends State<AddBannersImages> {
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
 
-        // Validate file size (max 5MB)
         if (file.size > 5 * 1024 * 1024) {
           throw Exception('Image size too large (max 5MB)');
         }
 
-        // Create object URL for preview (web-specific)
         if (file.bytes != null) {
           final blob = html.Blob([file.bytes!]);
           _previewUrl = html.Url.createObjectUrlFromBlob(blob);
@@ -57,8 +55,7 @@ class _AddBannersImagesState extends State<AddBannersImages> {
       }
     } catch (e) {
       setState(() {
-        _errorMessage =
-            'Image selection failed: ${e.toString().replaceAll('Exception: ', '')}';
+        _errorMessage = 'Image selection failed: ${e.toString().replaceAll('Exception: ', '')}';
         _selectedFile = null;
         _previewUrl = null;
       });
@@ -77,9 +74,7 @@ class _AddBannersImagesState extends State<AddBannersImages> {
         _uploadProgress = 0;
       });
 
-      // Web upload with bytes
-      final fileName =
-          '${_selectedTab}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileName = '${_selectedTab}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final ref = _storage.ref().child('banners/$_selectedTab/$fileName');
 
       final uploadTask = ref.putData(
@@ -96,7 +91,6 @@ class _AddBannersImagesState extends State<AddBannersImages> {
       await uploadTask;
       final url = await ref.getDownloadURL();
 
-      // Save to Firestore
       await _firestore.collection('banners').add({
         'type': _selectedTab,
         'url': url,
@@ -113,14 +107,14 @@ class _AddBannersImagesState extends State<AddBannersImages> {
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Upload successful!')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Upload successful!')),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Upload failed: ${e.toString()}')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Upload failed: ${e.toString()}')),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -128,7 +122,6 @@ class _AddBannersImagesState extends State<AddBannersImages> {
 
   @override
   void dispose() {
-    // Clean up object URLs
     if (_previewUrl != null) {
       html.Url.revokeObjectUrl(_previewUrl!);
     }
@@ -145,52 +138,34 @@ class _AddBannersImagesState extends State<AddBannersImages> {
         title: const Text('Banner Image Manager'),
         centerTitle: true,
       ),
-      body: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: isDesktop ? 40 : 16,
-          vertical: 24,
-        ),
+      body: Padding(
+        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 40 : 16, vertical: 24),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1200),
             child: Column(
               children: [
-                // Header and Tabs
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Manage Banner Images',
-                      style: theme.textTheme.headlineSmall,
-                    ),
+                    Text('Manage Banner Images', style: theme.textTheme.headlineSmall),
                     ToggleButtons(
-                      isSelected: [
-                        _selectedTab == 'diet',
-                        _selectedTab == 'app',
-                      ],
+                      isSelected: [_selectedTab == 'diet', _selectedTab == 'app'],
                       onPressed: (index) {
-                        setState(
-                          () => _selectedTab = index == 0 ? 'diet' : 'app',
-                        );
+                        setState(() => _selectedTab = index == 0 ? 'diet' : 'app');
                       },
                       children: const [Text('Diet'), Text('App')],
                     ),
                   ],
                 ),
                 const SizedBox(height: 24),
-
-                // Error message
                 if (_errorMessage != null)
-                  Text(
-                    _errorMessage!,
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
-
-                // Upload Section
+                  Text(_errorMessage!, style: TextStyle(color: theme.colorScheme.error)),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -198,10 +173,13 @@ class _AddBannersImagesState extends State<AddBannersImages> {
                             const Text('Upload New Banner'),
                             ElevatedButton(
                               onPressed: _isLoading ? null : _uploadImage,
-                              child:
-                                  _isLoading
-                                      ? const CircularProgressIndicator()
-                                      : const Text('Upload'),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Text('Upload'),
                             ),
                           ],
                         ),
@@ -218,37 +196,29 @@ class _AddBannersImagesState extends State<AddBannersImages> {
                             Image.network(
                               _previewUrl!,
                               height: 150,
-                              errorBuilder:
-                                  (context, error, stackTrace) => Container(
-                                    height: 150,
-                                    color: Colors.grey[200],
-                                    child: Center(
-                                      child: Text('Preview unavailable'),
-                                    ),
-                                  ),
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                height: 150,
+                                color: Colors.grey[200],
+                                child: const Center(child: Text('Preview unavailable')),
+                              ),
                             ),
                         ],
                         if (_uploadProgress > 0) ...[
                           const SizedBox(height: 16),
                           LinearProgressIndicator(value: _uploadProgress),
-                          Text(
-                            '${(_uploadProgress * 100).toStringAsFixed(1)}%',
-                          ),
+                          Text('${(_uploadProgress * 100).toStringAsFixed(1)}%'),
                         ],
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // Image Grid
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
-                    stream:
-                        _firestore
-                            .collection('banners')
-                            .where('type', isEqualTo: _selectedTab)
-                            .snapshots(),
+                    stream: _firestore
+                        .collection('banners')
+                        .where('type', isEqualTo: _selectedTab)
+                        .snapshots(),
                     builder: (context, snapshot) {
                       if (snapshot.hasError) {
                         return Text('Error: ${snapshot.error}');
@@ -258,49 +228,41 @@ class _AddBannersImagesState extends State<AddBannersImages> {
                       }
 
                       final docs = snapshot.data?.docs ?? [];
-                      docs.sort(
-                        (a, b) => (b['createdAt'] ?? 0).compareTo(
-                          a['createdAt'] ?? 0,
-                        ),
-                      );
+                      docs.sort((a, b) =>
+                          (b['createdAt'] ?? 0).compareTo(a['createdAt'] ?? 0));
 
                       return GridView.builder(
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: isDesktop ? 4 : 2,
                           childAspectRatio: 1.5,
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
                         ),
                         itemCount: docs.length,
                         itemBuilder: (context, index) {
                           final doc = docs[index];
                           return Card(
+                            clipBehavior: Clip.antiAlias,
                             child: Stack(
                               children: [
-                                CachedNetworkImage(
-                                  imageUrl: doc['url'],
-                                  fit: BoxFit.cover,
-                                  errorWidget:
-                                      (context, url, error) => Container(
-                                        color: Colors.grey[200],
-                                        child: const Center(
-                                          child: Icon(Icons.broken_image),
-                                        ),
-                                      ),),
-                                  Positioned(
-                                    bottom: 0,
-                                    right: 0,
-                                    child: IconButton(
-                                      icon: const Icon(
-                                        Icons.delete,
-                                        color: Colors.white,
-                                      ),
-                                      onPressed:
-                                          () => _showDeleteDialog(
-                                            doc.id,
-                                            doc['url'],
-                                          ),
+                                Positioned.fill(
+                                  child: CachedNetworkImage(
+                                    imageUrl: doc['url'],
+                                    fit: BoxFit.cover,
+                                    errorWidget: (context, url, error) => Container(
+                                      color: Colors.grey[200],
+                                      child: const Center(child: Icon(Icons.broken_image)),
                                     ),
                                   ),
-                                
+                                ),
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.delete, color: Colors.white),
+                                    onPressed: () => _showDeleteDialog(doc.id, doc['url']),
+                                  ),
+                                ),
                               ],
                             ),
                           );
@@ -320,23 +282,22 @@ class _AddBannersImagesState extends State<AddBannersImages> {
   Future<void> _showDeleteDialog(String docId, String url) async {
     return showDialog(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('Delete Banner?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(context);
-                  await _deleteImage(docId, url);
-                },
-                child: const Text('Delete'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Banner?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
           ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deleteImage(docId, url);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -346,14 +307,14 @@ class _AddBannersImagesState extends State<AddBannersImages> {
       await _firestore.collection('banners').doc(docId).delete();
       await _storage.refFromURL(url).delete();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Deleted successfully')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Deleted successfully')),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Delete failed: $e')),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
