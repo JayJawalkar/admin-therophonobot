@@ -10,7 +10,6 @@ import 'package:admin_therophonobot/features/add_games/widgets/section_card.dart
 
 class EditCategoryScreen extends StatefulWidget {
   final String categoryId;
-
   const EditCategoryScreen({super.key, required this.categoryId});
 
   @override
@@ -37,59 +36,38 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
 
   Future<void> _loadCategoryData() async {
     try {
-      final categoryDoc = await FirebaseFirestore.instance
+      final categoryRef = FirebaseFirestore.instance
           .collection('categories')
-          .doc(widget.categoryId)
-          .get();
-      
+          .doc(widget.categoryId);
+      final categoryDoc = await categoryRef.get();
       if (!categoryDoc.exists) {
-        setState(() {
-          _errorMessage = 'Category not found';
-        });
+        setState(() => _errorMessage = 'Category not found');
         return;
       }
-
       final data = categoryDoc.data()!;
       _categoryNameController.text = data['name'];
       _categoryImageUrl = data['imageUrl'];
-      
-      final gameIds = List<String>.from(data['gameIds'] ?? []);
-      
-      // Load games
-      for (var gameId in gameIds) {
-        final gameDoc = await FirebaseFirestore.instance
-            .collection('games')
-            .doc(gameId)
-            .get();
-            
-        if (gameDoc.exists) {
-          final gameData = GameFormData();
-          final game = gameDoc.data()!;
-          
-          gameData.gameId = gameId;
-          gameData.nameController.text = game['name'];
-          gameData.bannerUrl = game['bannerUrl'];
-          
-          // Load items
-          final items = List<Map<String, dynamic>>.from(game['items'] ?? []);
-          for (var item in items) {
-            gameData.items.add({
-              'name': item['name'],
-              'imageUrl': item['image'],
-            });
-          }
-          
-          _games.add(gameData);
+      // Load games from subcollection
+      final gamesSnapshot = await categoryRef.collection('games').get();
+      for (var gameDoc in gamesSnapshot.docs) {
+        final gameData = GameFormData();
+        gameData.gameId = gameDoc.id;
+        final game = gameDoc.data();
+        gameData.nameController.text = game['name'];
+        gameData.bannerUrl = game['bannerUrl'];
+        // Load items
+        final items = List<Map<String, dynamic>>.from(game['items'] ?? []);
+        for (var item in items) {
+          gameData.items.add({
+            'name': item['name'],
+            'imageUrl': item['image'],
+          });
         }
+        _games.add(gameData);
       }
-
-      setState(() {
-        _isInitialized = true;
-      });
+      setState(() => _isInitialized = true);
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Failed to load category: ${e.toString()}';
-      });
+      setState(() => _errorMessage = 'Failed to load category: ${e.toString()}');
     }
   }
 
@@ -107,168 +85,118 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
         });
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Image selection failed: ${e.toString()}';
-      });
+      setState(() => _errorMessage = 'Image selection failed: ${e.toString()}');
     }
   }
 
   void _addGameForm() {
-    setState(() {
-      _games.add(GameFormData());
-    });
+    setState(() => _games.add(GameFormData()));
   }
 
   void _removeGameForm(int index) {
-    setState(() {
-      _games.removeAt(index);
-    });
+    setState(() => _games.removeAt(index));
   }
 
   Future<void> _saveCategory() async {
     if (!_formKey.currentState!.validate()) {
-      setState(() {
-        _errorMessage = 'Please provide a category name';
-      });
+      setState(() => _errorMessage = 'Please provide a category name');
       return;
     }
     if (_games.isEmpty) {
-      setState(() {
-        _errorMessage = 'Please add at least one game';
-      });
+      setState(() => _errorMessage = 'Please add at least one game');
       return;
     }
-    
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
-    
     try {
+      final categoryRef = FirebaseFirestore.instance
+          .collection('categories')
+          .doc(widget.categoryId);
       String categoryImageUrl = _categoryImageUrl ?? '';
-      
-      // Upload new category image if selected
       if (_categoryImage != null) {
         categoryImageUrl = await _uploadFile(
           _categoryImage!,
           'category_images/${DateTime.now().millisecondsSinceEpoch}_${_categoryImage!.name}',
         );
       }
-      
-      // Update category
-      final categoryRef = FirebaseFirestore.instance
-          .collection('categories')
-          .doc(widget.categoryId);
-          
+      // Update category document
       await categoryRef.update({
         'name': _categoryNameController.text.trim(),
-        if (categoryImageUrl.isNotEmpty) 'imageUrl': categoryImageUrl,
+        'imageUrl': categoryImageUrl,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      
-      final List<String> gameIds = [];
-      
-      // Save each game
-      for (var game in _games) {
-        final gameId = await _saveGame(game, widget.categoryId);
-        gameIds.add(gameId);
+      // Process games
+      for (final game in _games) {
+        await _saveGame(game, categoryRef);
       }
-      
-      // Update category with new game IDs
-      await categoryRef.update({
-        'gameIds': FieldValue.arrayUnion(gameIds),
-      });
-      
-      // Remove old games that were deleted
-      final oldGameIdsSnapshot = await categoryRef.get();
-      final oldGameIds = List<String>.from(oldGameIdsSnapshot.data()?['gameIds'] ?? []);
-      final idsToRemove = oldGameIds.where((id) => !gameIds.contains(id)).toList();
-      
-      for (var id in idsToRemove) {
-        await FirebaseFirestore.instance.collection('games').doc(id).delete();
+      // Remove deleted games
+      final currentGames = await categoryRef.collection('games').get();
+      final currentGameIds = currentGames.docs.map((doc) => doc.id).toList();
+      final gameIdsToKeep = _games
+          .where((game) => game.gameId != null)
+          .map((game) => game.gameId!)
+          .toList();
+      final gameIdsToDelete = currentGameIds
+          .where((id) => !gameIdsToKeep.contains(id))
+          .toList();
+      for (final gameId in gameIdsToDelete) {
+        await categoryRef.collection('games').doc(gameId).delete();
       }
-      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Category updated successfully'),
-            backgroundColor: Theme.of(context).primaryColor,
+          const SnackBar(
+            content: Text('Category updated successfully'),
+            backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Failed to save category: ${e.toString()}';
-      });
+      setState(() => _errorMessage = 'Failed to save category: ${e.toString()}');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<String> _saveGame(GameFormData game, String categoryId) async {
-    if (game.gameId != null) {
-      // Update existing game
-      final gameRef = FirebaseFirestore.instance.collection('games').doc(game.gameId);
-      
-      String bannerUrl = game.bannerUrl ?? '';
-      
-      // Upload new banner if selected
-      if (game.bannerFile != null) {
-        bannerUrl = await _uploadFile(
-          game.bannerFile!,
-          'game_banners/${DateTime.now().millisecondsSinceEpoch}_${game.bannerFile!.name}',
-        );
-      }
-      
-      // Process items
-      final itemsWithUrls = await Future.wait(game.items.map((item) async {
-        if (item.containsKey('file')) {
-          // New item
-          final itemUrl = await _uploadFile(
-            item['file'],
-            'game_items/${DateTime.now().millisecondsSinceEpoch}_${item['file'].name}',
-          );
-          return {'name': item['name'], 'image': itemUrl};
-        }
-        // Existing item
-        return item;
-      }));
-      
-      await gameRef.update({
-        'name': game.nameController.text.trim(),
-        if (bannerUrl.isNotEmpty) 'bannerUrl': bannerUrl,
-        'items': itemsWithUrls,
-        'categoryId': categoryId,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      
-      return game.gameId!;
-    } else {
-      // Add new game
-      final imageUrl = await _uploadFile(
+  Future<void> _saveGame(
+      GameFormData game, DocumentReference categoryRef) async {
+    final gamesCollection = categoryRef.collection('games');
+    String bannerUrl = game.bannerUrl ?? '';
+    // Upload new banner if selected
+    if (game.bannerFile != null) {
+      bannerUrl = await _uploadFile(
         game.bannerFile!,
         'game_banners/${DateTime.now().millisecondsSinceEpoch}_${game.bannerFile!.name}',
       );
-      
-      final itemsWithUrls = await Future.wait(game.items.map((item) async {
+    }
+    // Process items
+    final List<Map<String, dynamic>> items = [];
+    for (final item in game.items) {
+      if (item.containsKey('file')) {
+        // New item - upload image
         final itemUrl = await _uploadFile(
           item['file'],
           'game_items/${DateTime.now().millisecondsSinceEpoch}_${item['file'].name}',
         );
-        return {'name': item['name'], 'image': itemUrl};
-      }));
-      
-      final gameRef = await FirebaseFirestore.instance.collection('games').add({
-        'name': game.nameController.text.trim(),
-        'bannerUrl': imageUrl,
-        'items': itemsWithUrls,
-        'categoryId': categoryId,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      
-      return gameRef.id;
+        items.add({'name': item['name'], 'image': itemUrl});
+      } else if (item.containsKey('imageUrl')) {
+        // Existing item - keep URL
+        items.add({'name': item['name'], 'image': item['imageUrl']});
+      }
+    }
+    final gameData = {
+      'name': game.nameController.text.trim(),
+      'bannerUrl': bannerUrl,
+      'items': items,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (game.gameId != null) {
+      // Update existing game
+      await gamesCollection.doc(game.gameId).update(gameData);
+    } else {
+      // Create new game
+      await gamesCollection.add(gameData);
     }
   }
 
@@ -285,14 +213,12 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
     final colorScheme = theme.colorScheme;
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
     final isDesktop = MediaQuery.of(context).size.width >= 1024;
-
     if (!_isInitialized) {
       return Scaffold(
         appBar: AppBar(title: const Text('Edit Category')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Category'),
@@ -318,18 +244,15 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                           final categoryRef = FirebaseFirestore.instance
                               .collection('categories')
                               .doc(widget.categoryId);
-                          
-                          final data = await categoryRef.get();
-                          final gameIds = List<String>.from(data.data()?['gameIds'] ?? []);
-                          
+                          // Fetch all game IDs from the subcollection
+                          final gamesSnapshot = await categoryRef.collection('games').get();
+                          final gameIds = gamesSnapshot.docs.map((doc) => doc.id).toList();
                           // Delete games
                           for (var gameId in gameIds) {
                             await FirebaseFirestore.instance.collection('games').doc(gameId).delete();
                           }
-                          
                           // Delete category
                           await categoryRef.delete();
-                          
                           if (mounted) {
                             Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -383,8 +306,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                                 color: theme.primaryColor, width: 2),
                           ),
                           filled: true,
-                          fillColor:
-                              colorScheme.surfaceVariant.withOpacity(0.1),
+                          fillColor: colorScheme.surfaceVariant.withOpacity(0.1),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 12),
                         ),
@@ -513,7 +435,6 @@ class _GameFormState extends State<GameForm> {
       );
       return;
     }
-    
     setState(() {
       if (_currentItemImage != null) {
         widget.gameData.items.add({

@@ -1,12 +1,13 @@
 import 'package:admin_therophonobot/features/add_banner_images/views/add_banners_images.dart';
 import 'package:admin_therophonobot/features/add_category/views/add_categories.dart';
 import 'package:admin_therophonobot/features/add_category/widgets/game_form.dart';
-import 'package:admin_therophonobot/features/add_doctors/views/add_doctors_screen.dart';
 import 'package:admin_therophonobot/features/add_games/views/add_game_screen_home.dart';
 import 'package:admin_therophonobot/features/add_games/views/add_game_screen_pathway.dart';
 import 'package:admin_therophonobot/features/add_games/views/add_game_screen_syllables.dart';
 import 'package:admin_therophonobot/features/add_plans/views/add_plans_screen.dart';
 import 'package:admin_therophonobot/features/api_keys/views/api_key_screen.dart';
+import 'package:admin_therophonobot/features/approve_docotors/views/approve_doctors.dart';
+import 'package:admin_therophonobot/features/colors/views/assign_colors_screen.dart';
 import 'package:admin_therophonobot/features/home/views/all_users_screen.dart';
 import 'package:admin_therophonobot/features/view_games/views/home_list_screen.dart';
 import 'package:flutter/material.dart';
@@ -172,6 +173,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       mainAxisSpacing: 20,
                       children: [
                         DashboardCard(
+                          color: Colors.amber.shade200,
                           title: 'Total Users',
                           value: totalUsers.toString(),
                           onTap: () {
@@ -184,6 +186,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         DashboardCard(
+                          color: Colors.red.shade200,
                           title: 'Premium Users',
                           value: premiumUsers.toString(),
                           onTap: () {
@@ -199,18 +202,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         DashboardCard(
-                          title: 'Add Doctors',
-                          value: totalDocotrs.toString(),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => AddDoctorScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                        DashboardCard(
+                          color: Colors.orange.shade500,
+
                           title: 'Add Game to Home',
                           value: totalHomeGames.toString(),
 
@@ -224,6 +217,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         DashboardCard(
+                          color: Colors.deepPurple.shade500,
+
                           title: 'Add Game to Pathway',
                           value: totalPathwayGames.toString(),
                           onTap: () {
@@ -236,6 +231,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         DashboardCard(
+                          color: Colors.green.shade500,
+
                           title: 'Add Game to Syllables',
                           value: totalSyllablesGame.toString(),
 
@@ -249,6 +246,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         DashboardCard(
+                          color: Colors.cyan.shade500,
+
                           title: 'Add Plans',
                           onTap: () {
                             Navigator.push(
@@ -260,6 +259,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         DashboardCard(
+                          color: Colors.brown.shade500,
+
                           title: 'Add Banner Images',
                           onTap: () {
                             Navigator.push(
@@ -270,6 +271,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             );
                           },
                         ),DashboardCard(
+                          color: Colors.blueGrey.shade500,
+
                           title: 'View Home Games',
                           onTap: () {
                             Navigator.push(
@@ -281,6 +284,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         DashboardCard(
+                          color: Colors.blue.shade500,
+
                           title: 'View Apis',
                           onTap: () {
                             Navigator.push(
@@ -292,6 +297,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           },
                         ),
                         DashboardCard(
+                          color: Colors.red.shade500,
+
                           title: 'Add Categories',
                           onTap: () {
                             Navigator.push(
@@ -302,6 +309,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             );
                           },
                         ),DashboardCard(
+                          color: Colors.pink.shade500,
+
                           title: 'Edit Categories',
                           onTap: () {
                             Navigator.push(
@@ -332,12 +341,36 @@ class SidebarContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: const [
+      children:  [
         Text(
           'THEROPHONOBOT',
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
         SizedBox(height: 30),
+        Text(
+          'Dashboard',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        SizedBox(height: 20),
+        TextButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AssignColorsScreen()),
+            );
+          },
+          child: Text('Add event color'),
+        ),
+        SizedBox(height: 20),
+        TextButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) =>  ApproveTherapistsScreen()),
+            );
+          },
+          child: Text('Approve therapist'),
+        ),
       ],
     );
   }
@@ -347,12 +380,12 @@ class DashboardCard extends StatelessWidget {
   final String title;
   final String? value;
   final VoidCallback onTap;
-
+  final Color? color;
   const DashboardCard({
     super.key,
     required this.title,
     this.value,
-    required this.onTap,
+    required this.onTap, this.color,
   });
 
   @override
@@ -361,7 +394,7 @@ class DashboardCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: color??Colors.white,
           borderRadius: BorderRadius.circular(16),
           boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
         ),

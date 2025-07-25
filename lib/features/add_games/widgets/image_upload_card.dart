@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -45,21 +46,17 @@ class ImageUploadCard extends StatelessWidget {
                           fit: BoxFit.cover,
                         )
                       else if (imageUrl != null)
-                        Image.network(
-                          imageUrl!,
+                        CachedNetworkImage(
+                          imageUrl:  imageUrl!,
                           fit: BoxFit.cover,
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
+                          progressIndicatorBuilder: (context, child, loadingProgress) {
                             return Center(
                               child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
-                                    : null,
+                                
                               ),
                             );
                           },
-                          errorBuilder: (context, error, stackTrace) {
+                          errorWidget: (context, error, stackTrace) {
                             return Icon(Icons.error, color: colorScheme.error);
                           },
                         ),

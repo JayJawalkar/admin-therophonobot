@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 class GameItemCard extends StatelessWidget {
@@ -116,22 +117,17 @@ class GameItemCard extends StatelessWidget {
       );
     } else if (imageUrl != null) {
       // Display from network URL (existing image)
-      return Image.network(
-        imageUrl!,
+      return CachedNetworkImage(
+        imageUrl:imageUrl!,
         fit: BoxFit.cover,
         width: double.infinity,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
+        progressIndicatorBuilder: (context, child, loadingProgress) {
           return Center(
             child: CircularProgressIndicator(
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded / 
-                      loadingProgress.expectedTotalBytes!
-                  : null,
             ),
           );
         },
-        errorBuilder: (context, error, stackTrace) {
+        errorWidget: (context, error, stackTrace) {
           return Center(
             child: Icon(
               Icons.error_outline,

@@ -70,65 +70,69 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
 
   Future<void> _saveCategory() async {
     if (!_formKey.currentState!.validate()) {
-      setState(() {
-        _errorMessage = 'Please provide a category name';
-      });
+      setState(() => _errorMessage = 'Please provide a category name');
       return;
     }
     if (_categoryImage == null) {
-      setState(() {
-        _errorMessage = 'Please select a category image';
-      });
+      setState(() => _errorMessage = 'Please select a category image');
       return;
     }
     if (_games.isEmpty) {
-      setState(() {
-        _errorMessage = 'Please add at least one game';
-      });
+      setState(() => _errorMessage = 'Please add at least one game');
       return;
     }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
+
     try {
-      // Upload category image
+      // 1. Upload category image
       final categoryImageUrl = await _uploadFile(
         _categoryImage!,
         'category_images/${DateTime.now().millisecondsSinceEpoch}_${_categoryImage!.name}',
       );
-      // Process all games and collect their data
-      final List<Map<String, dynamic>> gamesData = [];
-      for (var game in _games) {
+
+      // 2. Create category document
+      final categoryName = _categoryNameController.text.trim();
+      final categoryRef = FirebaseFirestore.instance
+          .collection('categories')
+          .doc(categoryName); // Use category name as document ID
+
+      await categoryRef.set({
+        'name': categoryName,
+        'imageUrl': categoryImageUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      // 3. Process games
+      for (final game in _games) {
         // Upload game banner
         final bannerUrl = await _uploadFile(
           game.banner!,
           'game_banners/${DateTime.now().millisecondsSinceEpoch}_${game.banner!.name}',
         );
-        // Upload game items
-        final itemsWithUrls = await Future.wait(
-          game.items.map((item) async {
-            final itemUrl = await _uploadFile(
-              item['file'],
-              'game_items/${DateTime.now().millisecondsSinceEpoch}_${item['file'].name}',
-            );
-            return {'name': item['name'], 'image': itemUrl};
-          }),
-        );
-        // Add game data to array
-        gamesData.add({
-          'name': game.nameController.text.trim(),
+
+        // Process game items
+        final List<Map<String, dynamic>> items = [];
+        for (final item in game.items) {
+          final itemUrl = await _uploadFile(
+            item['file'],
+            'game_items/${DateTime.now().millisecondsSinceEpoch}_${item['file'].name}',
+          );
+          items.add({'name': item['name'], 'image': itemUrl});
+        }
+
+        // Add game to category's subcollection
+        final gameName = game.nameController.text.trim();
+        await categoryRef.collection('games').doc(gameName).set({
+          'name': gameName,
           'bannerUrl': bannerUrl,
-          'items': itemsWithUrls,
+          'items': items,
         });
       }
-      // Save category with embedded games
-      await FirebaseFirestore.instance.collection('categories').add({
-        'name': _categoryNameController.text.trim(),
-        'imageUrl': categoryImageUrl,
-        'games': gamesData, // Embedded games array
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+
+      // 4. Show success
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -139,13 +143,9 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
         _resetForm();
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Failed to save category: ${e.toString()}';
-      });
+      setState(() => _errorMessage = 'Failed to save: ${e.toString()}');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

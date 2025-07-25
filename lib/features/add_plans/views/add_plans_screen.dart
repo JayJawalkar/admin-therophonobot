@@ -1,10 +1,10 @@
+import 'package:admin_therophonobot/features/add_plans/views/edit_plan_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class AddPlansScreen extends StatefulWidget {
   const AddPlansScreen({super.key});
-
   @override
   State<AddPlansScreen> createState() => _AddPlansScreenState();
 }
@@ -16,9 +16,9 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
   final _durationController = TextEditingController();
   final _benefitController = TextEditingController();
   List<String> benefits = [];
-
-  final CollectionReference plans = 
-      FirebaseFirestore.instance.collection('plans');
+  final CollectionReference plans = FirebaseFirestore.instance.collection(
+    'plans',
+  );
 
   @override
   void dispose() {
@@ -38,14 +38,12 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
         'benefits': benefits,
         'createdAt': Timestamp.now(),
       });
-
       // Clear form
       _titleController.clear();
       _priceController.clear();
       _durationController.clear();
       _benefitController.clear();
       setState(() => benefits = []);
-      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -89,12 +87,14 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDesktop = MediaQuery.of(context).size.width > 768;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Add Plans'),
-        centerTitle: true,
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showPlanOptions(context),
+        tooltip: 'Manage Plans',
+        child: const Icon(Icons.more_vert),
       ),
+
+      appBar: AppBar(title: const Text('Add Plans'), centerTitle: true),
       body: Container(
         padding: EdgeInsets.symmetric(
           horizontal: isDesktop ? 40 : 16,
@@ -117,10 +117,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (isDesktop) ...[
-                  Expanded(
-                    flex: 2,
-                    child: _buildCourseList(),
-                  ),
+                  Expanded(flex: 2, child: _buildCourseList()),
                   const SizedBox(width: 24),
                 ],
                 Expanded(
@@ -157,9 +154,9 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                                 Expanded(
                                   child: _buildFormField(
                                     controller: _priceController,
-                                    label: 'Price (\$)',
+                                    label: 'Price (₹)',
                                     hint: '0.00',
-                                    icon: Icons.attach_money,
+                                    icon: Icons.abc,
                                     keyboardType: TextInputType.number,
                                   ),
                                 ),
@@ -189,14 +186,17 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                                     controller: _benefitController,
                                     decoration: InputDecoration(
                                       labelText: 'Add benefit',
-                                      prefixIcon: const Icon(Icons.add_circle_outline),
+                                      prefixIcon: const Icon(
+                                        Icons.add_circle_outline,
+                                      ),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(8),
                                       ),
-                                      contentPadding: const EdgeInsets.symmetric(
-                                        vertical: 12,
-                                        horizontal: 16,
-                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            vertical: 12,
+                                            horizontal: 16,
+                                          ),
                                     ),
                                     onFieldSubmitted: (_) => _addBenefit(),
                                   ),
@@ -217,17 +217,25 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
-                                children: benefits.asMap().entries.map((entry) {
-                                  return Chip(
-                                    label: Text(entry.value),
-                                    deleteIcon: const Icon(Icons.close, size: 18),
-                                    onDeleted: () => _removeBenefit(entry.key),
-                                    backgroundColor: theme.primaryColor.withOpacity(0.1),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  );
-                                }).toList(),
+                                children:
+                                    benefits.asMap().entries.map((entry) {
+                                      return Chip(
+                                        label: Text(entry.value),
+                                        deleteIcon: const Icon(
+                                          Icons.close,
+                                          size: 18,
+                                        ),
+                                        onDeleted:
+                                            () => _removeBenefit(entry.key),
+                                        backgroundColor: theme.primaryColor
+                                            .withOpacity(0.1),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
                               ),
                             ],
                             const SizedBox(height: 32),
@@ -236,7 +244,9 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                               child: ElevatedButton(
                                 onPressed: _addCourse,
                                 style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -265,6 +275,108 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
     );
   }
 
+  void _showPlanOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit, color: Colors.blue),
+                title: const Text('Edit Plan'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectPlanToEdit(); // Define this
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Delete Plan'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _selectPlanToDelete(); // Define this
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _selectPlanToEdit() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return SimpleDialog(
+          title: const Text('Select a plan to edit'),
+          children: [
+            StreamBuilder<QuerySnapshot>(
+              stream: plans.snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return Column(
+                  children:
+                      snapshot.data!.docs.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return ListTile(
+                          title: Text(data['title']),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _navigateToEdit(doc.reference);
+                          },
+                        );
+                      }).toList(),
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _selectPlanToDelete() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return SimpleDialog(
+          title: const Text('Select a plan to delete'),
+          children: [
+            StreamBuilder<QuerySnapshot>(
+              stream: plans.snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return Column(
+                  children:
+                      snapshot.data!.docs.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        return ListTile(
+                          title: Text(data['title']),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _confirmDelete(doc.reference);
+                          },
+                        );
+                      }).toList(),
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildFormField({
     required TextEditingController controller,
     required String label,
@@ -281,10 +393,11 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
         labelText: label,
         hintText: hint,
         prefixIcon: Icon(icon),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 12,
+          horizontal: 16,
         ),
-        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       ),
     );
   }
@@ -292,12 +405,9 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
   Widget _buildCourseList() {
     final theme = Theme.of(context);
     final isDesktop = MediaQuery.of(context).size.width > 768;
-
     return Card(
       elevation: 8,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -317,15 +427,12 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                 if (snapshot.hasError) {
                   return Center(child: Text('Error: ${snapshot.error}'));
                 }
-
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
                 if (snapshot.data!.docs.isEmpty) {
                   return const Center(child: Text('No courses added yet'));
                 }
-
                 return isDesktop
                     ? _buildDesktopCourseTable(snapshot.data!.docs)
                     : _buildMobileCourseList(snapshot.data!.docs);
@@ -340,62 +447,101 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
   Widget _buildDesktopCourseTable(List<QueryDocumentSnapshot> docs) {
     final theme = Theme.of(context);
     final currencyFormat = NumberFormat.currency(symbol: '₹');
-
     return SingleChildScrollView(
+      physics: AlwaysScrollableScrollPhysics(),
       scrollDirection: Axis.horizontal,
       child: DataTable(
         columns: [
           DataColumn(
             label: Text(
               'Title',
-              style: TextStyle(fontWeight: FontWeight.bold, color: theme.primaryColor),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: theme.primaryColor,
+              ),
             ),
           ),
           DataColumn(
             label: Text(
               'Price',
-              style: TextStyle(fontWeight: FontWeight.bold, color: theme.primaryColor),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: theme.primaryColor,
+              ),
             ),
           ),
           DataColumn(
             label: Text(
               'Duration',
-              style: TextStyle(fontWeight: FontWeight.bold, color: theme.primaryColor),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: theme.primaryColor,
+              ),
             ),
           ),
           DataColumn(
             label: Text(
               'Benefits',
-              style: TextStyle(fontWeight: FontWeight.bold, color: theme.primaryColor),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: theme.primaryColor,
+              ),
             ),
           ),
-          const DataColumn(label: Text('Actions')),
+          DataColumn(
+            label: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 120),
+              child: const Text('Actions'),
+            ),
+          ),
         ],
-        rows: docs.map((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          return DataRow(
-            cells: [
-              DataCell(Text(data['title'])),
-              DataCell(Text(currencyFormat.format(data['price']))),
-              DataCell(Text(data['duration'])),
-              DataCell(
-                Tooltip(
-                  message: data['benefits'].join('\n'),
-                  child: Text(
-                    '${data['benefits'].length} benefits',
-                    style: const TextStyle(decoration: TextDecoration.underline),
+        rows:
+            docs.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return DataRow(
+                cells: [
+                  DataCell(Text(data['title'])),
+                  DataCell(Text(currencyFormat.format(data['price']))),
+                  DataCell(Text(data['duration'])),
+                  DataCell(
+                    Tooltip(
+                      message: data['benefits'].join('\n'),
+                      child: Text(
+                        '${data['benefits'].length} benefits',
+                        style: const TextStyle(
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              DataCell(
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: () => _confirmDelete(doc.reference),
-                ),
-              ),
-            ],
-          );
-        }).toList(),
+                  // Inside _buildDesktopCourseTable
+                  DataCell(
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 120),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 20),
+                            color: Colors.blue,
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(),
+                            onPressed: () => _navigateToEdit(doc.reference),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, size: 20),
+                            color: Colors.red,
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(),
+                            onPressed: () => _confirmDelete(doc.reference),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
       ),
     );
   }
@@ -403,7 +549,6 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
   Widget _buildMobileCourseList(List<QueryDocumentSnapshot> docs) {
     final theme = Theme.of(context);
     final currencyFormat = NumberFormat.currency(symbol: '\$');
-
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -428,9 +573,17 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _confirmDelete(doc.reference),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () => _navigateToEdit(doc.reference),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () => _confirmDelete(doc.reference),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -464,14 +617,16 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                 Wrap(
                   spacing: 4,
                   runSpacing: 4,
-                  children: (data['benefits'] as List).take(3).map((benefit) {
-                    return Chip(
-                      label: Text(benefit),
-                      backgroundColor: theme.primaryColor.withOpacity(0.1),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    );
-                  }).toList(),
+                  children:
+                      (data['benefits'] as List).take(3).map((benefit) {
+                        return Chip(
+                          label: Text(benefit),
+                          backgroundColor: theme.primaryColor.withOpacity(0.1),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        );
+                      }).toList(),
                 ),
                 if ((data['benefits'] as List).length > 3) ...[
                   const SizedBox(height: 4),
@@ -488,25 +643,36 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
     );
   }
 
+  void _navigateToEdit(DocumentReference docRef) {
+    // Navigate to an EditPlanScreen (not implemented in the current code)
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => EditPlanScreen(docRef: docRef)),
+    );
+  }
+
   Future<void> _confirmDelete(DocumentReference docRef) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Delete'),
-        content: const Text('Are you sure you want to delete this course?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Confirm Delete'),
+            content: const Text('Are you sure you want to delete this course?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
     );
-
     if (confirmed == true) {
       await docRef.delete();
       if (mounted) {
