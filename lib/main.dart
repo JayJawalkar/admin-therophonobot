@@ -1,14 +1,17 @@
+import 'package:admin_therophonobot/constants/supabase_config.dart';
 import 'package:admin_therophonobot/features/authentication/views/authentication_screen.dart';
-import 'package:admin_therophonobot/firebase_options.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main()async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-     options: DefaultFirebaseOptions.currentPlatform,
 
-  );
+  // Load environment variables
+  await dotenv.load(fileName: ".env");
+
+  // Initialize Supabase
+  await SupabaseConfig.initialize();
+
   runApp(const MyApp());
 }
 
@@ -18,12 +21,13 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Therophonobot Admin',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
-      home:AuthenticationScreen(),
+      home: const AuthenticationScreen(),
     );
   }
 }

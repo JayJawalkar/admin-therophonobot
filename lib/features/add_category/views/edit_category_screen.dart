@@ -1,12 +1,11 @@
-import 'package:admin_therophonobot/features/add_games/widgets/game_item_card.dart';
-import 'package:admin_therophonobot/features/add_games/widgets/small_image_upload.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_therophonobot/features/add_games/widgets/error_card.dart';
 import 'package:admin_therophonobot/features/add_games/widgets/image_upload_card.dart';
 import 'package:admin_therophonobot/features/add_games/widgets/section_card.dart';
+import 'package:admin_therophonobot/features/add_games/widgets/game_item_card.dart';
+import 'package:admin_therophonobot/features/add_games/widgets/small_image_upload.dart';
 
 class EditCategoryScreen extends StatefulWidget {
   final String categoryId;
@@ -36,34 +35,47 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
 
   Future<void> _loadCategoryData() async {
     try {
-      final categoryRef = FirebaseFirestore.instance
-          .collection('categories')
-          .doc(widget.categoryId);
-      final categoryDoc = await categoryRef.get();
-      if (!categoryDoc.exists) {
+      // Load category data
+      final categoryResponse = await Supabase.instance.client
+          .from('categories')
+          .select()
+          .eq('id', widget.categoryId)
+          .single();
+
+      if (categoryResponse.isEmpty) {
         setState(() => _errorMessage = 'Category not found');
         return;
       }
-      final data = categoryDoc.data()!;
-      _categoryNameController.text = data['name'];
-      _categoryImageUrl = data['imageUrl'];
-      // Load games from subcollection
-      final gamesSnapshot = await categoryRef.collection('games').get();
-      for (var gameDoc in gamesSnapshot.docs) {
-        final gameData = GameFormData();
-        gameData.gameId = gameDoc.id;
-        final game = gameDoc.data();
-        gameData.nameController.text = game['name'];
-        gameData.bannerUrl = game['bannerUrl'];
-        // Load items
-        final items = List<Map<String, dynamic>>.from(game['items'] ?? []);
-        for (var item in items) {
-          gameData.items.add({
+
+      _categoryNameController.text = categoryResponse['name'];
+      _categoryImageUrl = categoryResponse['image_url'];
+
+      // Load games for this category
+      final gamesResponse = await Supabase.instance.client
+          .from('games')
+          .select()
+          .eq('category', categoryResponse['name']);
+
+      for (final gameData in gamesResponse) {
+        final game = GameFormData();
+        game.gameId = gameData['id'];
+        game.nameController.text = gameData['name'];
+        game.bannerUrl = gameData['banner_url'];
+
+        // Load game items
+        final itemsResponse = await Supabase.instance.client
+            .from('game_items')
+            .select()
+            .eq('game_id', gameData['id']);
+
+        for (final item in itemsResponse) {
+          game.items.add({
+            'id': item['id'],
             'name': item['name'],
-            'imageUrl': item['image'],
+            'imageUrl': item['image_url'],
           });
         }
-        _games.add(gameData);
+        _games.add(game);
       }
       setState(() => _isInitialized = true);
     } catch (e) {
@@ -97,6 +109,25 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
     setState(() => _games.removeAt(index));
   }
 
+  Future<String> _uploadFile(PlatformFile file, String path) async {
+    try {
+      final fileBytes = file.bytes;
+      if (fileBytes == null) throw Exception('File bytes are null');
+
+      await Supabase.instance.client.storage
+          .from('game_assets')
+          .uploadBinary(path, fileBytes);
+
+      final publicUrl = Supabase.instance.client.storage
+          .from('game_assets')
+          .getPublicUrl(path);
+
+      return publicUrl;
+    } catch (e) {
+      throw Exception('Upload failed: ${e.toString()}');
+    }
+  }
+
   Future<void> _saveCategory() async {
     if (!_formKey.currentState!.validate()) {
       setState(() => _errorMessage = 'Please provide a category name');
@@ -111,9 +142,6 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
       _errorMessage = null;
     });
     try {
-      final categoryRef = FirebaseFirestore.instance
-          .collection('categories')
-          .doc(widget.categoryId);
       String categoryImageUrl = _categoryImageUrl ?? '';
       if (_categoryImage != null) {
         categoryImageUrl = await _uploadFile(
@@ -121,19 +149,29 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
           'category_images/${DateTime.now().millisecondsSinceEpoch}_${_categoryImage!.name}',
         );
       }
-      // Update category document
-      await categoryRef.update({
-        'name': _categoryNameController.text.trim(),
-        'imageUrl': categoryImageUrl,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+
+      // Update category
+      await Supabase.instance.client
+          .from('categories')
+          .update({
+            'name': _categoryNameController.text.trim(),
+            'image_url': categoryImageUrl,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', widget.categoryId);
+
       // Process games
       for (final game in _games) {
-        await _saveGame(game, categoryRef);
+        await _saveGame(game);
       }
+
       // Remove deleted games
-      final currentGames = await categoryRef.collection('games').get();
-      final currentGameIds = currentGames.docs.map((doc) => doc.id).toList();
+      final currentGamesResponse = await Supabase.instance.client
+          .from('games')
+          .select('id')
+          .eq('category', _categoryNameController.text.trim());
+
+      final currentGameIds = currentGamesResponse.map((game) => game['id'] as String).toList();
       final gameIdsToKeep = _games
           .where((game) => game.gameId != null)
           .map((game) => game.gameId!)
@@ -141,13 +179,25 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
       final gameIdsToDelete = currentGameIds
           .where((id) => !gameIdsToKeep.contains(id))
           .toList();
+
       for (final gameId in gameIdsToDelete) {
-        await categoryRef.collection('games').doc(gameId).delete();
+        // Delete game items first
+        await Supabase.instance.client
+            .from('game_items')
+            .delete()
+            .eq('game_id', gameId);
+        
+        // Then delete the game
+        await Supabase.instance.client
+            .from('games')
+            .delete()
+            .eq('id', gameId);
       }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Category updated successfully'),
+          SnackBar(
+            content: const Text('Category updated successfully'),
             backgroundColor: Colors.green,
           ),
         );
@@ -159,10 +209,9 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
     }
   }
 
-  Future<void> _saveGame(
-      GameFormData game, DocumentReference categoryRef) async {
-    final gamesCollection = categoryRef.collection('games');
+  Future<void> _saveGame(GameFormData game) async {
     String bannerUrl = game.bannerUrl ?? '';
+    
     // Upload new banner if selected
     if (game.bannerFile != null) {
       bannerUrl = await _uploadFile(
@@ -170,8 +219,9 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
         'game_banners/${DateTime.now().millisecondsSinceEpoch}_${game.bannerFile!.name}',
       );
     }
+
     // Process items
-    final List<Map<String, dynamic>> items = [];
+    final List<Map<String, dynamic>> itemsToSave = [];
     for (final item in game.items) {
       if (item.containsKey('file')) {
         // New item - upload image
@@ -179,32 +229,135 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
           item['file'],
           'game_items/${DateTime.now().millisecondsSinceEpoch}_${item['file'].name}',
         );
-        items.add({'name': item['name'], 'image': itemUrl});
+        itemsToSave.add({
+          'name': item['name'],
+          'image_url': itemUrl,
+        });
       } else if (item.containsKey('imageUrl')) {
         // Existing item - keep URL
-        items.add({'name': item['name'], 'image': item['imageUrl']});
+        itemsToSave.add({
+          'id': item['id'],
+          'name': item['name'],
+          'image_url': item['imageUrl'],
+        });
       }
     }
-    final gameData = {
-      'name': game.nameController.text.trim(),
-      'bannerUrl': bannerUrl,
-      'items': items,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
+
+    String gameId;
     if (game.gameId != null) {
       // Update existing game
-      await gamesCollection.doc(game.gameId).update(gameData);
+      gameId = game.gameId!;
+      await Supabase.instance.client
+          .from('games')
+          .update({
+            'name': game.nameController.text.trim(),
+            'banner_url': bannerUrl,
+            'category': _categoryNameController.text.trim(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', gameId);
     } else {
       // Create new game
-      await gamesCollection.add(gameData);
+      final gameResponse = await Supabase.instance.client
+          .from('games')
+          .insert({
+            'name': game.nameController.text.trim(),
+            'banner_url': bannerUrl,
+            'category': _categoryNameController.text.trim(),
+          })
+          .select()
+          .single();
+      gameId = gameResponse['id'] as String;
+    }
+
+    // Update game items
+    // First, delete existing items that were removed
+    final currentItemsResponse = await Supabase.instance.client
+        .from('game_items')
+        .select('id')
+        .eq('game_id', gameId);
+
+    final currentItemIds = currentItemsResponse.map((item) => item['id'] as String).toList();
+    final itemsToKeepIds = itemsToSave
+        .where((item) => item.containsKey('id'))
+        .map((item) => item['id'] as String)
+        .toList();
+    final itemsToDelete = currentItemIds
+        .where((id) => !itemsToKeepIds.contains(id))
+        .toList();
+
+    for (final itemId in itemsToDelete) {
+      await Supabase.instance.client
+          .from('game_items')
+          .delete()
+          .eq('id', itemId);
+    }
+
+    // Then, insert/update items
+    for (final item in itemsToSave) {
+      if (item.containsKey('id')) {
+        // Update existing item
+        await Supabase.instance.client
+            .from('game_items')
+            .update({
+              'name': item['name'],
+              'image_url': item['image_url'],
+            })
+            .eq('id', item['id']);
+      } else {
+        // Insert new item
+        await Supabase.instance.client
+            .from('game_items')
+            .insert({
+              'game_id': gameId,
+              'name': item['name'],
+              'image_url': item['image_url'],
+            });
+      }
     }
   }
 
-  Future<String> _uploadFile(PlatformFile file, String path) async {
-    final ref = FirebaseStorage.instance.ref().child(path);
-    if (file.bytes == null) throw Exception('File bytes are null');
-    await ref.putData(file.bytes!);
-    return await ref.getDownloadURL();
+  Future<void> _deleteCategory() async {
+    try {
+      // Get all games for this category first
+      final gamesResponse = await Supabase.instance.client
+          .from('games')
+          .select('id')
+          .eq('category', _categoryNameController.text.trim());
+
+      // Delete game items for each game
+      for (final game in gamesResponse) {
+        await Supabase.instance.client
+            .from('game_items')
+            .delete()
+            .eq('game_id', game['id']);
+      }
+
+      // Delete games
+      await Supabase.instance.client
+          .from('games')
+          .delete()
+          .eq('category', _categoryNameController.text.trim());
+
+      // Delete category
+      await Supabase.instance.client
+          .from('categories')
+          .delete()
+          .eq('id', widget.categoryId);
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Category deleted successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting category: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -213,12 +366,14 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
     final colorScheme = theme.colorScheme;
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
     final isDesktop = MediaQuery.of(context).size.width >= 1024;
+
     if (!_isInitialized) {
       return Scaffold(
         appBar: AppBar(title: const Text('Edit Category')),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Category'),
@@ -238,33 +393,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                       child: const Text('Cancel'),
                     ),
                     TextButton(
-                      onPressed: () async {
-                        try {
-                          // Delete category and all associated games
-                          final categoryRef = FirebaseFirestore.instance
-                              .collection('categories')
-                              .doc(widget.categoryId);
-                          // Fetch all game IDs from the subcollection
-                          final gamesSnapshot = await categoryRef.collection('games').get();
-                          final gameIds = gamesSnapshot.docs.map((doc) => doc.id).toList();
-                          // Delete games
-                          for (var gameId in gameIds) {
-                            await FirebaseFirestore.instance.collection('games').doc(gameId).delete();
-                          }
-                          // Delete category
-                          await categoryRef.delete();
-                          if (mounted) {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Category deleted successfully')),
-                            );
-                          }
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Error deleting category: $e')),
-                          );
-                        }
-                      },
+                      onPressed: _deleteCategory,
                       child: const Text('Delete'),
                     ),
                   ],
@@ -381,7 +510,7 @@ class _EditCategoryScreenState extends State<EditCategoryScreen> {
                           : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.save_outlined),
+                                const Icon(Icons.save_outlined),
                                 const SizedBox(width: 12),
                                 Text(
                                   'Save Changes',

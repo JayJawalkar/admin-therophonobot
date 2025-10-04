@@ -1,10 +1,11 @@
 import 'package:admin_therophonobot/features/add_plans/views/edit_plan_screen.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AddPlansScreen extends StatefulWidget {
   const AddPlansScreen({super.key});
+
   @override
   State<AddPlansScreen> createState() => _AddPlansScreenState();
 }
@@ -16,9 +17,9 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
   final _durationController = TextEditingController();
   final _benefitController = TextEditingController();
   List<String> benefits = [];
-  final CollectionReference plans = FirebaseFirestore.instance.collection(
-    'plans',
-  );
+  bool _isPopular = false;
+
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   @override
   void dispose() {
@@ -29,31 +30,49 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
     super.dispose();
   }
 
-  Future<void> _addCourse() async {
+  Future<void> _addPlan() async {
     if (_formKey.currentState!.validate() && benefits.isNotEmpty) {
-      await plans.add({
-        'title': _titleController.text,
-        'price': double.parse(_priceController.text),
-        'duration': _durationController.text,
-        'benefits': benefits,
-        'createdAt': Timestamp.now(),
-      });
-      // Clear form
-      _titleController.clear();
-      _priceController.clear();
-      _durationController.clear();
-      _benefitController.clear();
-      setState(() => benefits = []);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Course added successfully'),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+      try {
+        await _supabase.from('plans').insert({
+          'title': _titleController.text,
+          'price': double.parse(_priceController.text),
+          'duration': _durationController.text,
+          'benefits': benefits,
+          'is_popular': _isPopular,
+          'created_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+
+        // Clear form
+        _titleController.clear();
+        _priceController.clear();
+        _durationController.clear();
+        _benefitController.clear();
+        setState(() {
+          benefits = [];
+          _isPopular = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Plan added successfully'),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-          ),
-        );
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error adding plan: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } else if (benefits.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -87,13 +106,13 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDesktop = MediaQuery.of(context).size.width > 768;
+
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showPlanOptions(context),
         tooltip: 'Manage Plans',
         child: const Icon(Icons.more_vert),
       ),
-
       appBar: AppBar(title: const Text('Add Plans'), centerTitle: true),
       body: Container(
         padding: EdgeInsets.symmetric(
@@ -117,7 +136,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (isDesktop) ...[
-                  Expanded(flex: 2, child: _buildCourseList()),
+                  Expanded(flex: 2, child: _buildPlanList()),
                   const SizedBox(width: 24),
                 ],
                 Expanded(
@@ -135,7 +154,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Add New Course',
+                              'Add New Plan',
                               style: theme.textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
                                 color: theme.primaryColor,
@@ -144,8 +163,8 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                             const SizedBox(height: 24),
                             _buildFormField(
                               controller: _titleController,
-                              label: 'Course Title',
-                              hint: 'Enter course title',
+                              label: 'Plan Title',
+                              hint: 'Enter plan title',
                               icon: Icons.title,
                             ),
                             const SizedBox(height: 16),
@@ -156,8 +175,17 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                                     controller: _priceController,
                                     label: 'Price (₹)',
                                     hint: '0.00',
-                                    icon: Icons.abc,
+                                    icon: Icons.attach_money,
                                     keyboardType: TextInputType.number,
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Please enter price';
+                                      }
+                                      if (double.tryParse(value) == null) {
+                                        return 'Please enter a valid number';
+                                      }
+                                      return null;
+                                    },
                                   ),
                                 ),
                                 const SizedBox(width: 16),
@@ -167,13 +195,36 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                                     label: 'Duration',
                                     hint: 'e.g. 3 months',
                                     icon: Icons.timer,
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Please enter duration';
+                                      }
+                                      return null;
+                                    },
                                   ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: _isPopular,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _isPopular = value!;
+                                    });
+                                  },
+                                ),
+                                Text(
+                                  'Mark as Popular Plan',
+                                  style: theme.textTheme.bodyMedium,
                                 ),
                               ],
                             ),
                             const SizedBox(height: 24),
                             Text(
-                              'Course Benefits',
+                              'Plan Benefits',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.bold,
                               ),
@@ -242,7 +293,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
-                                onPressed: _addCourse,
+                                onPressed: _addPlan,
                                 style: ElevatedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 16,
@@ -252,7 +303,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                                   ),
                                 ),
                                 child: const Text(
-                                  'Save Course',
+                                  'Save Plan',
                                   style: TextStyle(fontSize: 16),
                                 ),
                               ),
@@ -265,7 +316,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                 ),
                 if (!isDesktop) ...[
                   const SizedBox(height: 24),
-                  _buildCourseList(),
+                  Expanded(child: _buildPlanList()),
                 ],
               ],
             ),
@@ -291,7 +342,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                 title: const Text('Edit Plan'),
                 onTap: () {
                   Navigator.pop(context);
-                  _selectPlanToEdit(); // Define this
+                  _selectPlanToEdit();
                 },
               ),
               ListTile(
@@ -299,7 +350,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                 title: const Text('Delete Plan'),
                 onTap: () {
                   Navigator.pop(context);
-                  _selectPlanToDelete(); // Define this
+                  _selectPlanToDelete();
                 },
               ),
             ],
@@ -316,21 +367,24 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
         return SimpleDialog(
           title: const Text('Select a plan to edit'),
           children: [
-            StreamBuilder<QuerySnapshot>(
-              stream: plans.snapshots(),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _supabase
+                  .from('plans')
+                  .stream(primaryKey: ['id'])
+                  .order('created_at', ascending: true),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
+                final plans = snapshot.data!;
                 return Column(
                   children:
-                      snapshot.data!.docs.map((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
+                      plans.map((plan) {
                         return ListTile(
-                          title: Text(data['title']),
+                          title: Text(plan['title']),
                           onTap: () {
                             Navigator.pop(context);
-                            _navigateToEdit(doc.reference);
+                            _navigateToEdit(plan['id']);
                           },
                         );
                       }).toList(),
@@ -350,21 +404,24 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
         return SimpleDialog(
           title: const Text('Select a plan to delete'),
           children: [
-            StreamBuilder<QuerySnapshot>(
-              stream: plans.snapshots(),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _supabase
+                  .from('plans')
+                  .stream(primaryKey: ['id'])
+                  .order('created_at', ascending: true),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
+                final plans = snapshot.data!;
                 return Column(
                   children:
-                      snapshot.data!.docs.map((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
+                      plans.map((plan) {
                         return ListTile(
-                          title: Text(data['title']),
+                          title: Text(plan['title']),
                           onTap: () {
                             Navigator.pop(context);
-                            _confirmDelete(doc.reference);
+                            _confirmDelete(plan['id'], plan['title']);
                           },
                         );
                       }).toList(),
@@ -402,9 +459,10 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
     );
   }
 
-  Widget _buildCourseList() {
+  Widget _buildPlanList() {
     final theme = Theme.of(context);
     final isDesktop = MediaQuery.of(context).size.width > 768;
+
     return Card(
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -414,15 +472,18 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Existing Courses',
+              'Existing Plans',
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: theme.primaryColor,
               ),
             ),
             const SizedBox(height: 16),
-            StreamBuilder<QuerySnapshot>(
-              stream: plans.orderBy('createdAt', descending: true).snapshots(),
+            StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _supabase
+                  .from('plans')
+                  .stream(primaryKey: ['id'])
+                  .order('created_at', ascending: false),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return Center(child: Text('Error: ${snapshot.error}'));
@@ -430,12 +491,13 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text('No courses added yet'));
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Center(child: Text('No plans added yet'));
                 }
+                final plans = snapshot.data!;
                 return isDesktop
-                    ? _buildDesktopCourseTable(snapshot.data!.docs)
-                    : _buildMobileCourseList(snapshot.data!.docs);
+                    ? _buildDesktopPlanTable(plans)
+                    : _buildMobilePlanList(plans);
               },
             ),
           ],
@@ -444,11 +506,11 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
     );
   }
 
-  Widget _buildDesktopCourseTable(List<QueryDocumentSnapshot> docs) {
+  Widget _buildDesktopPlanTable(List<Map<String, dynamic>> plans) {
     final theme = Theme.of(context);
     final currencyFormat = NumberFormat.currency(symbol: '₹');
+
     return SingleChildScrollView(
-      physics: AlwaysScrollableScrollPhysics(),
       scrollDirection: Axis.horizontal,
       child: DataTable(
         columns: [
@@ -481,6 +543,15 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
           ),
           DataColumn(
             label: Text(
+              'Popular',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: theme.primaryColor,
+              ),
+            ),
+          ),
+          DataColumn(
+            label: Text(
               'Benefits',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
@@ -496,25 +567,31 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
           ),
         ],
         rows:
-            docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
+            plans.map((plan) {
               return DataRow(
                 cells: [
-                  DataCell(Text(data['title'])),
-                  DataCell(Text(currencyFormat.format(data['price']))),
-                  DataCell(Text(data['duration'])),
+                  DataCell(Text(plan['title'])),
+                  DataCell(Text(currencyFormat.format(plan['price']))),
+                  DataCell(Text(plan['duration'])),
+                  DataCell(
+                    Icon(
+                      plan['is_popular'] == true
+                          ? Icons.star
+                          : Icons.star_border,
+                      color: plan['is_popular'] == true ? Colors.amber : null,
+                    ),
+                  ),
                   DataCell(
                     Tooltip(
-                      message: data['benefits'].join('\n'),
+                      message: (plan['benefits'] as List).join('\n'),
                       child: Text(
-                        '${data['benefits'].length} benefits',
+                        '${(plan['benefits'] as List).length} benefits',
                         style: const TextStyle(
                           decoration: TextDecoration.underline,
                         ),
                       ),
                     ),
                   ),
-                  // Inside _buildDesktopCourseTable
                   DataCell(
                     ConstrainedBox(
                       constraints: const BoxConstraints(minWidth: 120),
@@ -526,14 +603,15 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                             color: Colors.blue,
                             padding: const EdgeInsets.all(4),
                             constraints: const BoxConstraints(),
-                            onPressed: () => _navigateToEdit(doc.reference),
+                            onPressed: () => _navigateToEdit(plan['id']),
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete, size: 20),
                             color: Colors.red,
                             padding: const EdgeInsets.all(4),
                             constraints: const BoxConstraints(),
-                            onPressed: () => _confirmDelete(doc.reference),
+                            onPressed:
+                                () => _confirmDelete(plan['id'], plan['title']),
                           ),
                         ],
                       ),
@@ -546,16 +624,16 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
     );
   }
 
-  Widget _buildMobileCourseList(List<QueryDocumentSnapshot> docs) {
+  Widget _buildMobilePlanList(List<Map<String, dynamic>> plans) {
     final theme = Theme.of(context);
-    final currencyFormat = NumberFormat.currency(symbol: '\$');
+    final currencyFormat = NumberFormat.currency(symbol: '₹');
+
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: docs.length,
+      itemCount: plans.length,
       itemBuilder: (context, index) {
-        final doc = docs[index];
-        final data = doc.data() as Map<String, dynamic>;
+        final plan = plans[index];
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
           elevation: 2,
@@ -567,21 +645,26 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      data['title'],
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: Text(
+                        plan['title'],
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
+                    if (plan['is_popular'] == true)
+                      const Icon(Icons.star, color: Colors.amber, size: 16),
                     Row(
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit, color: Colors.blue),
-                          onPressed: () => _navigateToEdit(doc.reference),
+                          onPressed: () => _navigateToEdit(plan['id']),
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _confirmDelete(doc.reference),
+                          onPressed:
+                              () => _confirmDelete(plan['id'], plan['title']),
                         ),
                       ],
                     ),
@@ -595,7 +678,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                       style: TextStyle(color: theme.textTheme.bodySmall?.color),
                     ),
                     Text(
-                      currencyFormat.format(data['price']),
+                      currencyFormat.format(plan['price']),
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(width: 16),
@@ -604,7 +687,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                       style: TextStyle(color: theme.textTheme.bodySmall?.color),
                     ),
                     Text(
-                      data['duration'],
+                      plan['duration'],
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -618,7 +701,7 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                   spacing: 4,
                   runSpacing: 4,
                   children:
-                      (data['benefits'] as List).take(3).map((benefit) {
+                      (plan['benefits'] as List).take(3).map((benefit) {
                         return Chip(
                           label: Text(benefit),
                           backgroundColor: theme.primaryColor.withOpacity(0.1),
@@ -628,10 +711,10 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
                         );
                       }).toList(),
                 ),
-                if ((data['benefits'] as List).length > 3) ...[
+                if ((plan['benefits'] as List).length > 3) ...[
                   const SizedBox(height: 4),
                   Text(
-                    '+ ${(data['benefits'] as List).length - 3} more',
+                    '+ ${(plan['benefits'] as List).length - 3} more',
                     style: theme.textTheme.bodySmall,
                   ),
                 ],
@@ -643,21 +726,20 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
     );
   }
 
-  void _navigateToEdit(DocumentReference docRef) {
-    // Navigate to an EditPlanScreen (not implemented in the current code)
+  void _navigateToEdit(String planId) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => EditPlanScreen(docRef: docRef)),
+      MaterialPageRoute(builder: (context) => EditPlanScreen(planId: planId)),
     );
   }
 
-  Future<void> _confirmDelete(DocumentReference docRef) async {
+  Future<void> _confirmDelete(String planId, String planTitle) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
           (context) => AlertDialog(
             title: const Text('Confirm Delete'),
-            content: const Text('Are you sure you want to delete this course?'),
+            content: Text('Are you sure you want to delete "$planTitle"?'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -673,18 +755,30 @@ class _AddPlansScreenState extends State<AddPlansScreen> {
             ],
           ),
     );
+
     if (confirmed == true) {
-      await docRef.delete();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Course deleted successfully'),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+      try {
+        await _supabase.from('plans').delete().eq('id', planId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Plan deleted successfully'),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-          ),
-        );
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error deleting plan: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }

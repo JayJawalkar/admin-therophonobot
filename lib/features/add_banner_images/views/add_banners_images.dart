@@ -1,7 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:html' as html; // Web-specific imports
 
@@ -13,15 +12,14 @@ class AddBannersImages extends StatefulWidget {
 }
 
 class _AddBannersImagesState extends State<AddBannersImages> {
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   bool _isLoading = false;
   PlatformFile? _selectedFile;
   String? _errorMessage;
   String _selectedTab = 'diet';
   double _uploadProgress = 0;
-  String? _previewUrl; // For web image preview
+  String? _previewUrl;
 
   Future<void> _pickImage() async {
     try {
@@ -55,7 +53,8 @@ class _AddBannersImagesState extends State<AddBannersImages> {
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Image selection failed: ${e.toString().replaceAll('Exception: ', '')}';
+        _errorMessage =
+            'Image selection failed: ${e.toString().replaceAll('Exception: ', '')}';
         _selectedFile = null;
         _previewUrl = null;
       });
@@ -74,28 +73,38 @@ class _AddBannersImagesState extends State<AddBannersImages> {
         _uploadProgress = 0;
       });
 
-      final fileName = '${_selectedTab}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final ref = _storage.ref().child('banners/$_selectedTab/$fileName');
+      final fileName =
+          '${_selectedTab}_${DateTime.now().millisecondsSinceEpoch}.${_selectedFile!.extension ?? 'jpg'}';
+      final storagePath = 'banners/$_selectedTab/$fileName';
 
-      final uploadTask = ref.putData(
-        _selectedFile!.bytes!,
-        SettableMetadata(contentType: 'image/jpeg'),
-      );
+      // Upload to Supabase Storage
+      await _supabase.storage
+          .from('banners')
+          .uploadBinary(
+            storagePath,
+            _selectedFile!.bytes!,
+            fileOptions: FileOptions(
+              contentType: _getMimeType(_selectedFile!.extension),
+              upsert: false,
+            ),
+          );
 
-      uploadTask.snapshotEvents.listen((snapshot) {
-        setState(() {
-          _uploadProgress = snapshot.bytesTransferred / snapshot.totalBytes;
-        });
-      });
+      // Get public URL
+      final publicUrlResponse = _supabase.storage
+          .from('banners')
+          .getPublicUrl(storagePath);
 
-      await uploadTask;
-      final url = await ref.getDownloadURL();
-
-      await _firestore.collection('banners').add({
+      // Store metadata in Supabase table
+      final response = await _supabase.from('banners').insert({
         'type': _selectedTab,
-        'url': url,
-        'createdAt': DateTime.now().millisecondsSinceEpoch,
+        'url': publicUrlResponse,
+        'storage_path': storagePath,
+        'created_at': DateTime.now().toIso8601String(),
       });
+
+      if (response.error != null) {
+        throw Exception(response.error!.message);
+      }
 
       setState(() {
         _selectedFile = null;
@@ -107,16 +116,27 @@ class _AddBannersImagesState extends State<AddBannersImages> {
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Upload successful!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Upload successful!')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Upload failed: ${e.toString()}')),
-      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  String _getMimeType(String? extension) {
+    switch (extension?.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
     }
   }
 
@@ -139,7 +159,10 @@ class _AddBannersImagesState extends State<AddBannersImages> {
         centerTitle: true,
       ),
       body: Padding(
-        padding: EdgeInsets.symmetric(horizontal: isDesktop ? 40 : 16, vertical: 24),
+        padding: EdgeInsets.symmetric(
+          horizontal: isDesktop ? 40 : 16,
+          vertical: 24,
+        ),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1200),
@@ -148,11 +171,19 @@ class _AddBannersImagesState extends State<AddBannersImages> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Manage Banner Images', style: theme.textTheme.headlineSmall),
+                    Text(
+                      'Manage Banner Images',
+                      style: theme.textTheme.headlineSmall,
+                    ),
                     ToggleButtons(
-                      isSelected: [_selectedTab == 'diet', _selectedTab == 'app'],
+                      isSelected: [
+                        _selectedTab == 'diet',
+                        _selectedTab == 'app',
+                      ],
                       onPressed: (index) {
-                        setState(() => _selectedTab = index == 0 ? 'diet' : 'app');
+                        setState(
+                          () => _selectedTab = index == 0 ? 'diet' : 'app',
+                        );
                       },
                       children: const [Text('Diet'), Text('App')],
                     ),
@@ -160,7 +191,28 @@ class _AddBannersImagesState extends State<AddBannersImages> {
                 ),
                 const SizedBox(height: 24),
                 if (_errorMessage != null)
-                  Text(_errorMessage!, style: TextStyle(color: theme.colorScheme.error)),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error, color: theme.colorScheme.error),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: TextStyle(
+                              color: theme.colorScheme.onErrorContainer,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (_errorMessage != null) const SizedBox(height: 16),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -173,13 +225,16 @@ class _AddBannersImagesState extends State<AddBannersImages> {
                             const Text('Upload New Banner'),
                             ElevatedButton(
                               onPressed: _isLoading ? null : _uploadImage,
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : const Text('Upload'),
+                              child:
+                                  _isLoading
+                                      ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                      : const Text('Upload'),
                             ),
                           ],
                         ),
@@ -196,17 +251,22 @@ class _AddBannersImagesState extends State<AddBannersImages> {
                             Image.network(
                               _previewUrl!,
                               height: 150,
-                              errorBuilder: (context, error, stackTrace) => Container(
-                                height: 150,
-                                color: Colors.grey[200],
-                                child: const Center(child: Text('Preview unavailable')),
-                              ),
+                              errorBuilder:
+                                  (context, error, stackTrace) => Container(
+                                    height: 150,
+                                    color: Colors.grey[200],
+                                    child: const Center(
+                                      child: Text('Preview unavailable'),
+                                    ),
+                                  ),
                             ),
                         ],
                         if (_uploadProgress > 0) ...[
                           const SizedBox(height: 16),
                           LinearProgressIndicator(value: _uploadProgress),
-                          Text('${(_uploadProgress * 100).toStringAsFixed(1)}%'),
+                          Text(
+                            '${(_uploadProgress * 100).toStringAsFixed(1)}%',
+                          ),
                         ],
                       ],
                     ),
@@ -214,22 +274,25 @@ class _AddBannersImagesState extends State<AddBannersImages> {
                 ),
                 const SizedBox(height: 24),
                 Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: _firestore
-                        .collection('banners')
-                        .where('type', isEqualTo: _selectedTab)
-                        .snapshots(),
+                  child: StreamBuilder<List<Map<String, dynamic>>>(
+                    stream: _supabase
+                        .from('banners')
+                        .stream(primaryKey: ['id'])
+                        .eq('type', _selectedTab)
+                        .order('created_at', ascending: false),
                     builder: (context, snapshot) {
                       if (snapshot.hasError) {
-                        return Text('Error: ${snapshot.error}');
+                        return Center(child: Text('Error: ${snapshot.error}'));
                       }
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
                       }
 
-                      final docs = snapshot.data?.docs ?? [];
-                      docs.sort((a, b) =>
-                          (b['createdAt'] ?? 0).compareTo(a['createdAt'] ?? 0));
+                      final banners = snapshot.data ?? [];
+
+                      if (banners.isEmpty) {
+                        return const Center(child: Text('No banners found'));
+                      }
 
                       return GridView.builder(
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -238,29 +301,39 @@ class _AddBannersImagesState extends State<AddBannersImages> {
                           mainAxisSpacing: 16,
                           crossAxisSpacing: 16,
                         ),
-                        itemCount: docs.length,
+                        itemCount: banners.length,
                         itemBuilder: (context, index) {
-                          final doc = docs[index];
+                          final banner = banners[index];
                           return Card(
                             clipBehavior: Clip.antiAlias,
                             child: Stack(
                               children: [
                                 Positioned.fill(
                                   child: CachedNetworkImage(
-                                    imageUrl: doc['url'],
+                                    imageUrl: banner['url'],
                                     fit: BoxFit.cover,
-                                    errorWidget: (context, url, error) => Container(
-                                      color: Colors.grey[200],
-                                      child: const Center(child: Icon(Icons.broken_image)),
-                                    ),
+                                    errorWidget:
+                                        (context, url, error) => Container(
+                                          color: Colors.grey[200],
+                                          child: const Center(
+                                            child: Icon(Icons.broken_image),
+                                          ),
+                                        ),
                                   ),
                                 ),
                                 Positioned(
                                   top: 4,
                                   right: 4,
                                   child: IconButton(
-                                    icon: const Icon(Icons.delete, color: Colors.white),
-                                    onPressed: () => _showDeleteDialog(doc.id, doc['url']),
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      color: Colors.white,
+                                    ),
+                                    onPressed:
+                                        () => _showDeleteDialog(
+                                          banner['id'],
+                                          banner['storage_path'],
+                                        ),
                                   ),
                                 ),
                               ],
@@ -279,42 +352,56 @@ class _AddBannersImagesState extends State<AddBannersImages> {
     );
   }
 
-  Future<void> _showDeleteDialog(String docId, String url) async {
+  Future<void> _showDeleteDialog(String docId, String storagePath) async {
     return showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Banner?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Delete Banner?'),
+            content: const Text('This action cannot be undone.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _deleteImage(docId, storagePath);
+                },
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _deleteImage(docId, url);
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
     );
   }
 
-  Future<void> _deleteImage(String docId, String url) async {
+  Future<void> _deleteImage(String docId, String storagePath) async {
     try {
       setState(() => _isLoading = true);
-      await _firestore.collection('banners').doc(docId).delete();
-      await _storage.refFromURL(url).delete();
+
+      // Delete from database
+      final dbResponse = await _supabase
+          .from('banners')
+          .delete()
+          .eq('id', docId);
+      if (dbResponse.error != null) {
+        throw Exception(dbResponse.error!.message);
+      }
+
+      // Delete from storage
+      await _supabase.storage.from('banners').remove([
+        storagePath,
+      ]);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Deleted successfully')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Deleted successfully')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Delete failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

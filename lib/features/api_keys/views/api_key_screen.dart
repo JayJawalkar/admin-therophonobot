@@ -1,6 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // For clipboard
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiKeyScreen extends StatefulWidget {
   const ApiKeyScreen({super.key});
@@ -10,16 +12,20 @@ class ApiKeyScreen extends StatefulWidget {
 }
 
 class _ApiKeyScreenState extends State<ApiKeyScreen> {
-  final CollectionReference apiKeys =
-      FirebaseFirestore.instance.collection('apikeys');
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   // Function to edit API Key
-  Future<void> _updateApiKey(String docId, String keyName, String currentValue,
-      [String? currentRegion]) async {
-    TextEditingController keyController = TextEditingController(text: currentValue);
+  Future<void> _updateApiKey(
+    String serviceName,
+    String currentValue, [
+    String? currentRegion,
+  ]) async {
+    TextEditingController keyController = TextEditingController(
+      text: currentValue,
+    );
     TextEditingController? regionController;
 
-    if (keyName == "speechace" && currentRegion != null) {
+    if (serviceName == "speechace" && currentRegion != null) {
       regionController = TextEditingController(text: currentRegion);
     }
 
@@ -27,15 +33,17 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text("Edit $keyName Key"),
+          title: Text("Edit $serviceName Key"),
           content: SingleChildScrollView(
             child: ListBody(
               children: [
                 TextField(
                   controller: keyController,
-                  decoration: InputDecoration(labelText: "$keyName API Key"),
+                  decoration: InputDecoration(
+                    labelText: "$serviceName API Key",
+                  ),
                 ),
-                if (keyName == "speechace")
+                if (serviceName == "speechace")
                   TextField(
                     controller: regionController,
                     decoration: InputDecoration(labelText: "Region"),
@@ -58,15 +66,23 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
                 }
 
                 try {
-                  await apiKeys.doc(docId).update({
-                    "key": keyController.text.trim(),
-                    if (keyName == "speechace" && regionController != null)
-                      "region": regionController.text.trim(),
-                  });
+                  // Update existing record
+                  await _supabase
+                      .from('api_keys')
+                      .update({
+                        'api_key': keyController.text.trim(),
+                        if (serviceName == "speechace" &&
+                            regionController != null)
+                          'region': regionController.text.trim(),
+                        'updated_at': DateTime.now().toIso8601String(),
+                      })
+                      .eq('service_name', serviceName);
 
                   Navigator.pop(context); // Close dialog
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("$keyName key updated successfully")),
+                    SnackBar(
+                      content: Text("$serviceName key updated successfully"),
+                    ),
                   );
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -75,7 +91,7 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
                 }
               },
               child: Text("Save"),
-            )
+            ),
           ],
         );
       },
@@ -83,15 +99,24 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
   }
 
   // Widget to show key with copy button
-  Widget _buildKeyRow(BuildContext context, String service, String key,
-      VoidCallback onEdit, String? region) {
+  Widget _buildKeyRow(
+    BuildContext context,
+    String service,
+    String key,
+    VoidCallback onEdit,
+    String? region,
+  ) {
     return ListTile(
-      title: Text("$service API Key", style: TextStyle(fontWeight: FontWeight.bold)),
+      title: Text(
+        "$service API Key",
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SelectableText(key),
-          if (region != null) Text("Region: $region"),
+          if (region != null && region.isNotEmpty && region != "N/A")
+            Text("Region: $region"),
         ],
       ),
       trailing: Row(
@@ -106,10 +131,7 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
               );
             },
           ),
-          IconButton(
-            icon: Icon(Icons.edit),
-            onPressed: onEdit,
-          ),
+          IconButton(icon: Icon(Icons.edit), onPressed: onEdit),
         ],
       ),
     );
@@ -121,21 +143,28 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
       appBar: AppBar(title: Text("Manage API Keys")),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: StreamBuilder<QuerySnapshot>(
-          stream: apiKeys.snapshots(),
+        child: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _fetchApiKeys(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Center(child: CircularProgressIndicator());
             }
 
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            if (snapshot.hasError) {
+              return Center(
+                child: Text("Error loading API keys: ${snapshot.error}"),
+              );
+            }
+
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
               return Center(child: Text("No API keys found."));
             }
 
-            Map<String, dynamic> keysMap = {};
-            snapshot.data!.docs.forEach((doc) {
-              keysMap[doc.id] = doc.data() as Map<String, dynamic>;
-            });
+            // Convert list to map for easier access
+            Map<String, Map<String, dynamic>> keysMap = {};
+            for (var keyData in snapshot.data!) {
+              keysMap[keyData['service_name']] = keyData;
+            }
 
             return ListView(
               children: [
@@ -143,11 +172,10 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
                 _buildKeyRow(
                   context,
                   "Razorpay",
-                  keysMap['razorpay']?['key'] ?? "N/A",
+                  keysMap['razorpay']?['api_key'] ?? "N/A",
                   () => _updateApiKey(
                     'razorpay',
-                    'razorpay',
-                    keysMap['razorpay']?['key'] ?? "",
+                    keysMap['razorpay']?['api_key'] ?? "",
                   ),
                   null,
                 ),
@@ -156,11 +184,10 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
                 _buildKeyRow(
                   context,
                   "Speechace",
-                  keysMap['speechace']?['key'] ?? "N/A",
+                  keysMap['speechace']?['api_key'] ?? "N/A",
                   () => _updateApiKey(
                     'speechace',
-                    'speechace',
-                    keysMap['speechace']?['key'] ?? "",
+                    keysMap['speechace']?['api_key'] ?? "",
                     keysMap['speechace']?['region'],
                   ),
                   keysMap['speechace']?['region'] ?? "N/A",
@@ -171,5 +198,14 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
         ),
       ),
     );
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchApiKeys() async {
+    final response = await _supabase
+        .from('api_keys')
+        .select()
+        .eq('is_active', true);
+
+    return response;
   }
 }

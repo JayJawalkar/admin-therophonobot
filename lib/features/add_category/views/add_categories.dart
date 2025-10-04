@@ -1,12 +1,11 @@
-import 'package:admin_therophonobot/features/add_games/widgets/game_item_card.dart';
-import 'package:admin_therophonobot/features/add_games/widgets/small_image_upload.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_therophonobot/features/add_games/widgets/error_card.dart';
 import 'package:admin_therophonobot/features/add_games/widgets/image_upload_card.dart';
 import 'package:admin_therophonobot/features/add_games/widgets/section_card.dart';
+import 'package:admin_therophonobot/features/add_games/widgets/game_item_card.dart';
+import 'package:admin_therophonobot/features/add_games/widgets/small_image_upload.dart';
 
 class AddCategoryScreen extends StatefulWidget {
   const AddCategoryScreen({super.key});
@@ -50,22 +49,35 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
         });
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Image selection failed: ${e.toString()}';
-      });
+      setState(() => _errorMessage = 'Image selection failed: ${e.toString()}');
     }
   }
 
   void _addGameForm() {
-    setState(() {
-      _games.add(GameFormData());
-    });
+    setState(() => _games.add(GameFormData()));
   }
 
   void _removeGameForm(int index) {
-    setState(() {
-      _games.removeAt(index);
-    });
+    setState(() => _games.removeAt(index));
+  }
+
+  Future<String> _uploadFile(PlatformFile file, String path) async {
+    try {
+      final fileBytes = file.bytes;
+      if (fileBytes == null) throw Exception('File bytes are null');
+
+      await Supabase.instance.client.storage
+          .from('game_assets')
+          .uploadBinary(path, fileBytes);
+
+      final publicUrl = Supabase.instance.client.storage
+          .from('game_assets')
+          .getPublicUrl(path);
+
+      return publicUrl;
+    } catch (e) {
+      throw Exception('Upload failed: ${e.toString()}');
+    }
   }
 
   Future<void> _saveCategory() async {
@@ -94,50 +106,70 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
         'category_images/${DateTime.now().millisecondsSinceEpoch}_${_categoryImage!.name}',
       );
 
-      // 2. Create category document
+      // 2. Create category
       final categoryName = _categoryNameController.text.trim();
-      final categoryRef = FirebaseFirestore.instance
-          .collection('categories')
-          .doc(categoryName); // Use category name as document ID
+      await Supabase.instance.client
+              .from('categories')
+              .insert({
+                'name': categoryName,
+                'image_url': categoryImageUrl,
+                'created_at': DateTime.now().toIso8601String(),
+              })
+              .select()
+              .single();
 
-      await categoryRef.set({
-        'name': categoryName,
-        'imageUrl': categoryImageUrl,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
       // 3. Process games
       for (final game in _games) {
+        if (game.bannerFile == null) {
+          setState(
+            () => _errorMessage = 'Please select a banner for all games',
+          );
+          return;
+        }
+
         // Upload game banner
         final bannerUrl = await _uploadFile(
-          game.banner!,
-          'game_banners/${DateTime.now().millisecondsSinceEpoch}_${game.banner!.name}',
+          game.bannerFile!,
+          'game_banners/${DateTime.now().millisecondsSinceEpoch}_${game.bannerFile!.name}',
         );
 
+        // Create game
+        final gameResponse =
+            await Supabase.instance.client
+                .from('games')
+                .insert({
+                  'name': game.nameController.text.trim(),
+                  'banner_url': bannerUrl,
+                  'category': categoryName,
+                  'created_at': DateTime.now().toIso8601String(),
+                })
+                .select()
+                .single();
+
+        final gameId = gameResponse['id'] as String;
+
         // Process game items
-        final List<Map<String, dynamic>> items = [];
         for (final item in game.items) {
           final itemUrl = await _uploadFile(
             item['file'],
             'game_items/${DateTime.now().millisecondsSinceEpoch}_${item['file'].name}',
           );
-          items.add({'name': item['name'], 'image': itemUrl});
-        }
 
-        // Add game to category's subcollection
-        final gameName = game.nameController.text.trim();
-        await categoryRef.collection('games').doc(gameName).set({
-          'name': gameName,
-          'bannerUrl': bannerUrl,
-          'items': items,
-        });
+          await Supabase.instance.client.from('game_items').insert({
+            'game_id': gameId,
+            'name': item['name'],
+            'image_url': itemUrl,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+        }
       }
 
       // 4. Show success
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Category created successfully'),
-            backgroundColor: Theme.of(context).primaryColor,
+          const SnackBar(
+            content: Text('Category created successfully'),
+            backgroundColor: Colors.green,
           ),
         );
         _resetForm();
@@ -147,13 +179,6 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  Future<String> _uploadFile(PlatformFile file, String path) async {
-    final ref = FirebaseStorage.instance.ref().child(path);
-    if (file.bytes == null) throw Exception('File bytes are null');
-    await ref.putData(file.bytes!);
-    return await ref.getDownloadURL();
   }
 
   void _resetForm() {
@@ -169,6 +194,7 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
+    final isDesktop = MediaQuery.of(context).size.width >= 1024;
 
     return Scaffold(
       appBar: AppBar(
@@ -205,114 +231,147 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.symmetric(
-          horizontal: isSmallScreen ? 16 : 24,
-          vertical: 16,
+          horizontal:
+              isSmallScreen
+                  ? 16
+                  : isDesktop
+                  ? 80
+                  : 40,
+          vertical: 24,
         ),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Category Details
-              SectionCard(
-                title: 'Category Details',
-                icon: Icons.category,
+        child: Center(
+          child: SizedBox(
+            width: isSmallScreen ? double.infinity : 800,
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextFormField(
-                    controller: _categoryNameController,
-                    decoration: InputDecoration(
-                      labelText: 'Category Name',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      filled: true,
-                      fillColor: colorScheme.surfaceVariant.withOpacity(0.2),
-                    ),
-                    validator:
-                        (value) => value?.isEmpty ?? true ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Category Image',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ImageUploadCard(
-                    file: _categoryImage,
-                    onPressed: _pickCategoryImage,
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // Games Section
-              SectionCard(
-                title: 'Games',
-                icon: Icons.videogame_asset,
-                children: [
-                  ..._games.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final game = entry.value;
-                    return GameForm(
-                      gameData: game,
-                      onRemove: () => _removeGameForm(index),
-                    );
-                  }).toList(),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: _addGameForm,
-                    icon: Icon(Icons.add, size: 20),
-                    label: Text('Add Game'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                    ),
-                  ),
-                ],
-              ),
-
-              if (_errorMessage != null) ...[
-                const SizedBox(height: 16),
-                ErrorCard(
-                  message: _errorMessage!,
-                  onDismiss: () => setState(() => _errorMessage = null),
-                ),
-              ],
-
-              const SizedBox(height: 24),
-              Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isSmallScreen ? 0 : 80,
-                ),
-                child: FilledButton.tonal(
-                  onPressed: _isLoading ? null : _saveCategory,
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child:
-                      _isLoading
-                          ? const CircularProgressIndicator()
-                          : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.save_outlined),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Save Category',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+                  // Category Details
+                  SectionCard(
+                    title: 'Category Details',
+                    icon: Icons.category,
+                    children: [
+                      TextFormField(
+                        controller: _categoryNameController,
+                        decoration: InputDecoration(
+                          labelText: 'Category Name',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: colorScheme.outline),
                           ),
-                ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: theme.primaryColor,
+                              width: 2,
+                            ),
+                          ),
+                          filled: true,
+                          fillColor: colorScheme.surfaceVariant.withOpacity(
+                            0.1,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                        validator:
+                            (value) =>
+                                value?.isEmpty ?? true ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Category Image',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ImageUploadCard(
+                        file: _categoryImage,
+                        onPressed: _pickCategoryImage,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  // Games Section
+                  SectionCard(
+                    title: 'Games',
+                    icon: Icons.videogame_asset,
+                    children: [
+                      ..._games.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final game = entry.value;
+                        return GameForm(
+                          gameData: game,
+                          onRemove: () => _removeGameForm(index),
+                        );
+                      }).toList(),
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: _addGameForm,
+                        icon: const Icon(Icons.add, size: 20),
+                        label: const Text('Add Game'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_errorMessage != null) ...[
+                    const SizedBox(height: 16),
+                    ErrorCard(
+                      message: _errorMessage!,
+                      onDismiss: () => setState(() => _errorMessage = null),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal:
+                          isSmallScreen
+                              ? 0
+                              : isDesktop
+                              ? 80
+                              : 40,
+                    ),
+                    child: FilledButton.tonal(
+                      onPressed: _isLoading ? null : _saveCategory,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child:
+                          _isLoading
+                              ? const CircularProgressIndicator()
+                              : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.save_outlined),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Save Category',
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -323,14 +382,17 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
 // Helper class to manage each game's form data
 class GameFormData {
   final TextEditingController nameController = TextEditingController();
-  PlatformFile? banner;
+  PlatformFile? bannerFile;
+  String? bannerUrl;
+  String? gameId;
   List<Map<String, dynamic>> items = [];
+
+  GameFormData({this.gameId});
 }
 
 class GameForm extends StatefulWidget {
   final GameFormData gameData;
   final VoidCallback onRemove;
-
   const GameForm({super.key, required this.gameData, required this.onRemove});
 
   @override
@@ -340,6 +402,7 @@ class GameForm extends StatefulWidget {
 class _GameFormState extends State<GameForm> {
   final TextEditingController _itemNameController = TextEditingController();
   PlatformFile? _currentItemImage;
+  final _formKey = GlobalKey<FormState>();
 
   void _addGameItem() {
     if (_itemNameController.text.isEmpty || _currentItemImage == null) {
@@ -348,7 +411,6 @@ class _GameFormState extends State<GameForm> {
       );
       return;
     }
-
     setState(() {
       widget.gameData.items.add({
         'name': _itemNameController.text.trim(),
@@ -375,7 +437,7 @@ class _GameFormState extends State<GameForm> {
       if (result != null && result.files.isNotEmpty) {
         setState(() {
           if (isBanner) {
-            widget.gameData.banner = result.files.first;
+            widget.gameData.bannerFile = result.files.first;
           } else {
             _currentItemImage = result.files.first;
           }
@@ -393,117 +455,141 @@ class _GameFormState extends State<GameForm> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSmallScreen = MediaQuery.of(context).size.width < 600;
+    final crossAxisCount =
+        isSmallScreen
+            ? 2
+            : MediaQuery.of(context).size.width >= 1200
+            ? 4
+            : 3;
 
-    return Material(
-      elevation: 1,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: widget.gameData.nameController,
-                    decoration: InputDecoration(
-                      labelText: 'Game Name',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outline.withOpacity(0.5)),
+        color: colorScheme.surface.withOpacity(0.8),
+      ),
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: widget.gameData.nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Game Name',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: colorScheme.outline),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: theme.primaryColor,
+                        width: 2,
                       ),
                     ),
+                    filled: true,
+                    fillColor: colorScheme.surfaceVariant.withOpacity(0.2),
                   ),
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: Icon(Icons.delete),
-                  onPressed: widget.onRemove,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Game Banner',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
               ),
+              const SizedBox(width: 12),
+              IconButton(
+                icon: Icon(Icons.delete, color: colorScheme.error),
+                onPressed: widget.onRemove,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Game Banner',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
             ),
-            const SizedBox(height: 8),
-            ImageUploadCard(
-              file: widget.gameData.banner,
-              onPressed: () => _pickImage(true),
-            ),
-            const SizedBox(height: 12),
-            // Items Form
-            Material(
-              color: colorScheme.surfaceVariant.withOpacity(0.1),
+          ),
+          const SizedBox(height: 8),
+          ImageUploadCard(
+            file: widget.gameData.bannerFile,
+            imageUrl: widget.gameData.bannerUrl,
+            onPressed: () => _pickImage(true),
+          ),
+          const SizedBox(height: 16),
+          // Items Form
+          Container(
+            decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _itemNameController,
-                        decoration: InputDecoration(
-                          labelText: 'Item Name',
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                          ),
+              color: colorScheme.surfaceVariant.withOpacity(0.2),
+            ),
+            padding: const EdgeInsets.all(16),
+            child: Form(
+              key: _formKey,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _itemNameController,
+                      decoration: InputDecoration(
+                        labelText: 'Item Name',
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
                         ),
                       ),
+                      validator:
+                          (value) => value?.isEmpty ?? true ? 'Required' : null,
                     ),
-                    const SizedBox(width: 8),
-                    SmallImageUpload(
-                      file: _currentItemImage,
-                      onPressed: () => _pickImage(false),
+                  ),
+                  const SizedBox(width: 12),
+                  SmallImageUpload(
+                    file: _currentItemImage,
+                    onPressed: () => _pickImage(false),
+                  ),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: Icon(
+                      Icons.add_circle,
+                      size: 32,
+                      color: colorScheme.primary,
                     ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: Icon(
-                        Icons.add_circle,
-                        size: 32,
-                        color: colorScheme.primary,
-                      ),
-                      onPressed: _addGameItem,
-                    ),
-                  ],
-                ),
+                    onPressed: _addGameItem,
+                  ),
+                ],
               ),
             ),
-            if (widget.gameData.items.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: isSmallScreen ? 2 : 3,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.85,
-                  ),
-                  itemCount: widget.gameData.items.length,
-                  itemBuilder: (context, index) {
-                    final item = widget.gameData.items[index];
-                    return GameItemCard(
-                      name: item['name'],
-                      imageBytes: item['file']?.bytes,
-                      onDelete: () => _removeItem(index),
-                      onEdit: () {
-                        _itemNameController.text = item['name'];
-                        setState(() {
-                          _currentItemImage = item['file'];
-                          widget.gameData.items.removeAt(index);
-                        });
-                      },
-                    );
-                  },
+          ),
+          if (widget.gameData.items.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 0.9,
                 ),
+                itemCount: widget.gameData.items.length,
+                itemBuilder: (context, index) {
+                  final item = widget.gameData.items[index];
+                  return GameItemCard(
+                    name: item['name'],
+                    imageBytes: item['file']?.bytes,
+                    onDelete: () => _removeItem(index),
+                    onEdit: () {
+                      _itemNameController.text = item['name'];
+                      setState(() {
+                        _currentItemImage = item['file'];
+                        widget.gameData.items.removeAt(index);
+                      });
+                    },
+                  );
+                },
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

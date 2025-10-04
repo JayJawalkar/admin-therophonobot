@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AssignColorsScreen extends StatefulWidget {
   const AssignColorsScreen({super.key});
@@ -9,6 +9,8 @@ class AssignColorsScreen extends StatefulWidget {
 }
 
 class _AssignColorsScreenState extends State<AssignColorsScreen> {
+  final SupabaseClient client = Supabase.instance.client;
+
   Color selectedAppBarColor = Colors.blue;
   Color selectedBottomNavColor = Colors.blue;
   bool isSaving = false;
@@ -23,16 +25,13 @@ class _AssignColorsScreenState extends State<AssignColorsScreen> {
 
   Future<void> _loadSettings() async {
     try {
-      final doc =
-          await FirebaseFirestore.instance
-              .collection('settings')
-              .doc('theme_colors')
-              .get();
+      final response =
+          await client.from('settings').select().limit(1).maybeSingle();
 
-      if (doc.exists) {
-        // Load colors
-        final appBarColorValue = doc.data()?['appBarColor'];
-        final bottomNavColorValue = doc.data()?['bottomNavColor'];
+      if (response != null) {
+        final appBarColorValue = response['app_bar_color'] as int?;
+        final bottomNavColorValue = response['bottom_nav_color'] as int?;
+
         if (appBarColorValue != null) {
           selectedAppBarColor = Color(appBarColorValue);
         }
@@ -40,43 +39,40 @@ class _AssignColorsScreenState extends State<AssignColorsScreen> {
           selectedBottomNavColor = Color(bottomNavColorValue);
         }
 
-        // Check and reset daily flag
+        final lastUpdatedStr = response['last_updated'] as String?;
         final lastUpdated =
-            (doc.data()?['lastUpdated'] as Timestamp?)?.toDate();
+            lastUpdatedStr != null ? DateTime.parse(lastUpdatedStr) : null;
+
         final now = DateTime.now();
         final todayMidnight = DateTime(now.year, now.month, now.day);
 
         if (lastUpdated != null && lastUpdated.isBefore(todayMidnight)) {
-          // Reset flag if last update was before today
-          await FirebaseFirestore.instance
-              .collection('settings')
-              .doc('theme_colors')
-              .update({'isColorSetToday': false});
+          // Reset daily flag
+          await client
+              .from('settings')
+              .update({'is_color_set_today': false})
+              .eq('id', response['id']);
           setState(() => isColorSetToday = false);
         } else {
-          // Set flag based on Firestore value
-          setState(
-            () => isColorSetToday = doc.data()?['isColorSetToday'] ?? false,
-          );
+          setState(() {
+            isColorSetToday = response['is_color_set_today'] ?? false;
+          });
         }
       }
     } catch (e) {
-      e.toString();
+      debugPrint("Error loading settings: $e");
     }
   }
 
   Future<void> _saveColors() async {
     setState(() => isSaving = true);
     try {
-      await FirebaseFirestore.instance
-          .collection('settings')
-          .doc('theme_colors')
-          .set({
-            'appBarColor': selectedAppBarColor.value,
-            'bottomNavColor': selectedBottomNavColor.value,
-            'lastUpdated': FieldValue.serverTimestamp(),
-            'isColorSetToday': true, // Add flag to Firestore
-          }, SetOptions(merge: true));
+      await client.from('settings').upsert({
+        'app_bar_color': selectedAppBarColor.value,
+        'bottom_nav_color': selectedBottomNavColor.value,
+        'last_updated': DateTime.now().toIso8601String(),
+        'is_color_set_today': true,
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Colors saved successfully!')),
