@@ -18,7 +18,6 @@ class AllUsersPage extends StatefulWidget {
 }
 
 class _AllUsersPageState extends State<AllUsersPage> {
-
   // Function to increase premium validity
   Future<void> _increaseValidity(String userId, int daysToAdd) async {
     try {
@@ -171,7 +170,19 @@ class _AllUsersPageState extends State<AllUsersPage> {
                         ),
                         DataColumn(
                           label: Text(
-                            'Phone',
+                            'Last Active',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Text(
+                            'Words Used',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Text(
+                            'Word Limit',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -189,7 +200,7 @@ class _AllUsersPageState extends State<AllUsersPage> {
                         ),
                         DataColumn(
                           label: Text(
-                            'Status',
+                            'Screen Time',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -212,13 +223,11 @@ class _AllUsersPageState extends State<AllUsersPage> {
                                 user.data() as Map<String, dynamic>? ?? {};
                             final name = data['name'] ?? 'No Name';
                             final email = data['email'] ?? 'No Email';
-                            final phone = data['phone'] ?? 'No Phone';
                             final isPremium = data['isPremium'] == true;
                             final isBlocked = data['isBlocked'] == true;
                             final userId = user.id;
 
                             String expiryStr = '—';
-                            bool isExpiringSoon = false;
 
                             if (isPremium &&
                                 data['premiumExpiresAt'] is Timestamp) {
@@ -228,16 +237,24 @@ class _AllUsersPageState extends State<AllUsersPage> {
                               expiryStr = DateFormat(
                                 'dd MMM yyyy, hh:mm a',
                               ).format(expiryDate);
-                              isExpiringSoon =
-                                  expiryDate.isAfter(now) &&
-                                  expiryDate.isBefore(cutoff);
                             }
 
                             return DataRow(
                               cells: [
                                 DataCell(Text(name)),
                                 DataCell(Text(email)),
-                                DataCell(Text(phone)),
+                                DataCell(
+                                  Text(
+                                    data['lastActive'] != null
+                                        ? DateFormat('MMM dd, hh:mm a').format(
+                                          (data['lastActive'] as Timestamp)
+                                              .toDate(),
+                                        )
+                                        : '—',
+                                  ),
+                                ),
+                                DataCell(Text('${data['wordsUsed'] ?? 0}')),
+                                DataCell(Text('${data['wordLimit'] ?? 100}')),
                                 DataCell(
                                   isPremium
                                       ? const Icon(
@@ -251,50 +268,11 @@ class _AllUsersPageState extends State<AllUsersPage> {
                                 ),
                                 DataCell(Text(expiryStr)),
                                 DataCell(
-                                  isPremium
-                                      ? isExpiringSoon
-                                          ? Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.redAccent
-                                                  .withOpacity(0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: const Text(
-                                              'Expiring Soon',
-                                              style: TextStyle(
-                                                color: Colors.redAccent,
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          )
-                                          : Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.green.withOpacity(
-                                                0.1,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                            child: const Text(
-                                              'Active',
-                                              style: TextStyle(
-                                                color: Colors.green,
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          )
-                                      : const Text('—'),
+                                  Text(
+                                    Duration(
+                                      seconds: (data['totalScreenTime'] ?? 0),
+                                    ).toString().split('.').first,
+                                  ),
                                 ),
                                 DataCell(
                                   isPremium
